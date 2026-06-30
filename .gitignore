@@ -1,0 +1,12 @@
+artifacts/
+*.log
+*.tmp
+*.zip
+*.mp4
+*.mov
+*.wav
+*.png
+*.jpg
+*.jpeg
+*.env
+.env
