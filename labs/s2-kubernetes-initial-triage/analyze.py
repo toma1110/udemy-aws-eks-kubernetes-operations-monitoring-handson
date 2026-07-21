@@ -138,6 +138,9 @@ def analyze(fixtures: Path = DEFAULT_FIXTURES) -> dict[str, Any]:
         identity = (namespace, name)
         if identity in pods:
             raise EvidenceError(f"duplicate listed Pod identity: {namespace}/{name}")
+        node = pod.get("status", {}).get("node")
+        if node is not None and node not in nodes:
+            raise EvidenceError(f"listed Pod node is absent: {namespace}/{name} -> {node}")
         pods[identity] = pod
     events_doc = load_json(fixtures / "events.json")
     require_kind(events_doc, "EventList", "events.json")
@@ -169,12 +172,16 @@ def analyze(fixtures: Path = DEFAULT_FIXTURES) -> dict[str, Any]:
 
     crash = load_json(fixtures / "describe-crashloop-worker.json")
     crash_identity = pod_identity(crash, "describe-crashloop-worker.json")
-    require_listed_pod(pods, crash_identity, "describe-crashloop-worker.json")
+    crash_pod = require_listed_pod(pods, crash_identity, "describe-crashloop-worker.json")
     crash_event = event_for(events, crash_identity, "BackOff")
     crash_current = (fixtures / "logs-crashloop-worker-current.txt").read_text(encoding="utf-8")
     crash_previous = (fixtures / "logs-crashloop-worker-previous.txt").read_text(encoding="utf-8")
     if crash.get("status", {}).get("displayStatus") != "CrashLoopBackOff":
         raise EvidenceError("CrashLoopBackOff describe state mismatch")
+    if crash_pod.get("status", {}).get("displayStatus") != "CrashLoopBackOff":
+        raise EvidenceError("CrashLoopBackOff Pod list state mismatch")
+    if crash_pod.get("status", {}).get("restarts") != crash.get("status", {}).get("restartCount"):
+        raise EvidenceError("CrashLoopBackOff restart count mismatch")
     if "APP_MODE is missing" not in crash_previous:
         raise EvidenceError("CrashLoopBackOff previous log lacks expected setting error")
     if "starting worker" not in crash_current:
@@ -186,6 +193,10 @@ def analyze(fixtures: Path = DEFAULT_FIXTURES) -> dict[str, Any]:
     oom_previous = (fixtures / "logs-oom-reporter-previous.txt").read_text(encoding="utf-8")
     if oom.get("status", {}).get("lastState", {}).get("reason") != "OOMKilled":
         raise EvidenceError("OOM describe evidence lacks OOMKilled")
+    if oom_pod.get("status", {}).get("phase") != oom.get("status", {}).get("phase"):
+        raise EvidenceError("OOM Pod phase mismatch")
+    if oom_pod.get("status", {}).get("restarts") != oom.get("status", {}).get("restartCount"):
+        raise EvidenceError("OOM restart count mismatch")
     if "memory pressure increased before termination" not in oom_previous:
         raise EvidenceError("OOM previous log lacks memory-pressure record")
 

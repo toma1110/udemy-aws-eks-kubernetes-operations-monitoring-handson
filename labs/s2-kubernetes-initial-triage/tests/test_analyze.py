@@ -87,6 +87,48 @@ class AnalyzeTests(unittest.TestCase):
             with self.assertRaisesRegex(analyze.EvidenceError, "Pod event"):
                 analyze.analyze(target)
 
+    def test_unknown_pod_node_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            self.copied_fixtures(target)
+            name = "get-pods.json"
+            document = json.loads((target / name).read_text(encoding="utf-8"))
+            document["items"][0]["status"]["node"] = "worker-missing"
+            (target / name).write_text(
+                json.dumps(document, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            self.repin_manifest(target, name)
+            with self.assertRaisesRegex(analyze.EvidenceError, "node is absent"):
+                analyze.analyze(target)
+
+    def test_crashloop_restart_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            self.copied_fixtures(target)
+            name = "describe-crashloop-worker.json"
+            document = json.loads((target / name).read_text(encoding="utf-8"))
+            document["status"]["restartCount"] = 8
+            (target / name).write_text(
+                json.dumps(document, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            self.repin_manifest(target, name)
+            with self.assertRaisesRegex(analyze.EvidenceError, "restart count mismatch"):
+                analyze.analyze(target)
+
+    def test_oom_restart_mismatch_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir)
+            self.copied_fixtures(target)
+            name = "describe-oom-reporter.json"
+            document = json.loads((target / name).read_text(encoding="utf-8"))
+            document["status"]["restartCount"] = 4
+            (target / name).write_text(
+                json.dumps(document, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+            self.repin_manifest(target, name)
+            with self.assertRaisesRegex(analyze.EvidenceError, "restart count mismatch"):
+                analyze.analyze(target)
+
     def test_each_finding_has_next_check(self):
         self.assertTrue(all(item["next_check"] for item in self.result["findings"]))
 
