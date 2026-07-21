@@ -1,39 +1,7 @@
 # 02. `describe`、`logs`、eventsで深掘りする
 
-## 目的
+Section 2の演習は、AWSアカウントやKubernetesクラスターを使わない固定データ版へ移動しました。
 
-一覧で気になったPodを深掘りし、ログ、イベント、終了理由から初動仮説を作ります。
+[固定データで行うKubernetes初動診断](s2-kubernetes-initial-triage/README.md)の手順4から6で、同じnamespaceとPodの`describe`、現在・前回logs、eventsを照合し、Pending、CrashLoopBackOff、OOMKilledの初動仮説を作ります。
 
-## コマンド
-
-```powershell
-kubectl describe pod <pod-name> -n <namespace>
-kubectl logs <pod-name> -n <namespace> --tail=100
-kubectl get events -n <namespace> --sort-by=.lastTimestamp
-```
-
-直前に落ちたコンテナを見る場合:
-
-```powershell
-kubectl logs <pod-name> -n <namespace> --previous --tail=100
-```
-
-## 見るポイント
-
-- container stateとlast state
-- restart reason
-- image pullエラー
-- probe failure
-- scheduling failure
-- application error
-
-## 記録欄
-
-```text
-Pod:
-namespace:
-describeで見えた異常:
-logsで見えた異常:
-eventsで見えた異常:
-次に確認すること:
-```
+結果は原因確定ではありません。複数の根拠を組み合わせ、次に確認する項目まで記録します。

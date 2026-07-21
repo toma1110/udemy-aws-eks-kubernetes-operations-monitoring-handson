@@ -1,0 +1,9 @@
+{
+  "kind": "PodList",
+  "items": [
+    {"metadata": {"name": "healthy-web", "namespace": "training"}, "status": {"phase": "Running", "displayStatus": "Running", "restarts": 0, "node": "worker-a"}},
+    {"metadata": {"name": "pending-api", "namespace": "training"}, "status": {"phase": "Pending", "displayStatus": "Pending", "restarts": 0, "node": null}},
+    {"metadata": {"name": "crashloop-worker", "namespace": "training"}, "status": {"phase": "Running", "displayStatus": "CrashLoopBackOff", "restarts": 7, "node": "worker-b"}},
+    {"metadata": {"name": "oom-reporter", "namespace": "training"}, "status": {"phase": "Running", "displayStatus": "Running", "restarts": 3, "node": "worker-a"}}
+  ]
+}

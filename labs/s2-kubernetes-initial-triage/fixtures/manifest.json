@@ -1,0 +1,15 @@
+{
+  "schema": "synthetic-kubernetes-fixtures-v1",
+  "files": {
+    "describe-crashloop-worker.json": "238240fd162407215576f83092191ddbe7251263c1528d2655aaec63906717c0",
+    "describe-oom-reporter.json": "c9ab09cdebe329dd374fd6f4330a04f133424e8625b9c83e7bfa3e1833c28b84",
+    "describe-pending-api.json": "9674957cb0cbb9807d13bbe3769da91701c9c08c97b8659204f9b45b062237b0",
+    "events.json": "c1aba1503f2b793fdc09d1f5ae0d89a8e851bb30e2400f0d7e66ac2639e195c8",
+    "get-namespaces.json": "f2d748a9fd7483faec2491b9e502884e4154494c6a84f9b32da45a2e975241ef",
+    "get-nodes.json": "b8d29636088761b5ac3421d0d8f12289efc9adc1dd0f367c4b9ce74a0a13181e",
+    "get-pods.json": "655f56a1525d2aa69ec0f4094ecff9518503d5e3241a9d6d8560aec0fc5000ec",
+    "logs-crashloop-worker-current.txt": "d8b36ca1bffa37984366cfc6b1865e04a7a1eb5af3b991da29026536e527e212",
+    "logs-crashloop-worker-previous.txt": "d861dda472e6f3a83a67dbed2c8b8cf248389f6c52e4cbb841c5fff9f93a688d",
+    "logs-oom-reporter-previous.txt": "3ed1c427c4b9db2357bd37cd3a3d5d10a3f64c92877af9d555521357b4acc5e0"
+  }
+}

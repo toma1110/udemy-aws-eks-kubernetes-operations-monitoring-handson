@@ -1,0 +1,8 @@
+{
+  "kind": "NamespaceList",
+  "items": [
+    {"metadata": {"name": "default"}, "status": {"phase": "Active"}},
+    {"metadata": {"name": "kube-system"}, "status": {"phase": "Active"}},
+    {"metadata": {"name": "training"}, "status": {"phase": "Active"}}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"name": "oom-reporter", "namespace": "training"},
+  "spec": {"resources": {"requests": {"memory": "128Mi"}, "limits": {"memory": "256Mi"}}},
+  "status": {"phase": "Running", "restartCount": 3, "lastState": {"reason": "OOMKilled", "exitCode": 137}}
+}

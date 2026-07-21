@@ -1,0 +1,11 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"name": "crashloop-worker", "namespace": "training"},
+  "status": {
+    "phase": "Running",
+    "displayStatus": "CrashLoopBackOff",
+    "waitingReason": "CrashLoopBackOff",
+    "restartCount": 7,
+    "lastState": {"reason": "Error", "exitCode": 1}
+  }
+}

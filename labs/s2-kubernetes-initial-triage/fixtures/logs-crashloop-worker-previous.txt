@@ -1,0 +1,2 @@
+2026-01-15T09:00:58Z ERROR required setting APP_MODE is missing
+2026-01-15T09:00:58Z exiting with code 1

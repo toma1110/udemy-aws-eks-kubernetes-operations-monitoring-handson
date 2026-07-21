@@ -1,0 +1,6 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"name": "pending-api", "namespace": "training"},
+  "spec": {"resources": {"requests": {"memory": "4Gi"}}},
+  "status": {"phase": "Pending", "conditions": {"PodScheduled": false}, "node": null}
+}

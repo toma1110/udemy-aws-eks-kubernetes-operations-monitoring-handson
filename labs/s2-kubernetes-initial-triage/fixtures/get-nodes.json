@@ -1,0 +1,7 @@
+{
+  "kind": "NodeList",
+  "items": [
+    {"metadata": {"name": "worker-a"}, "status": {"ready": true, "version": "v1.30.4"}},
+    {"metadata": {"name": "worker-b"}, "status": {"ready": true, "version": "v1.30.4"}}
+  ]
+}

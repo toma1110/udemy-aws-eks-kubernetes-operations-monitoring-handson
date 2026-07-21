@@ -1,0 +1,40 @@
+{
+  "schema": "kubernetes-initial-triage-result-v1",
+  "cluster_overview": {
+    "node_count": 2,
+    "not_ready_nodes": [],
+    "namespace_count": 3,
+    "pod_count": 4,
+    "abnormal_candidates": ["training/crashloop-worker", "training/oom-reporter", "training/pending-api"]
+  },
+  "findings": [
+    {
+      "pod": "pending-api",
+      "namespace": "training",
+      "category": "Pending",
+      "evidence": ["get-pods: phase Pending", "describe: PodScheduled=False", "event: FailedScheduling / 0/2 nodes are available: 2 Insufficient memory."],
+      "initial_hypothesis": "Requested memory exceeds currently schedulable node capacity.",
+      "next_check": "Compare Pod memory requests with allocatable node memory and other workloads."
+    },
+    {
+      "pod": "crashloop-worker",
+      "namespace": "training",
+      "category": "CrashLoopBackOff",
+      "evidence": ["describe: waiting reason CrashLoopBackOff", "current log: starting worker", "previous log: required setting APP_MODE is missing", "event: BackOff / Back-off restarting failed container worker."],
+      "initial_hypothesis": "The container exits during startup because a required setting is missing.",
+      "next_check": "Check the workload configuration that should supply APP_MODE."
+    },
+    {
+      "pod": "oom-reporter",
+      "namespace": "training",
+      "category": "OOMKilled",
+      "evidence": ["get-pods: restarts 3", "describe: last reason OOMKilled", "describe: memory limit 256Mi", "previous log: memory pressure increased before termination"],
+      "initial_hypothesis": "The container previously reached its memory limit.",
+      "next_check": "Compare memory usage with requests and limits before changing resources."
+    }
+  ],
+  "limitations": [
+    "Synthetic evidence supports initial triage practice, not a live-cluster diagnosis.",
+    "Findings are hypotheses and require live metrics or configuration evidence before remediation."
+  ]
+}

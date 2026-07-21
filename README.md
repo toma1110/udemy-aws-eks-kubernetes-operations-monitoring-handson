@@ -4,18 +4,19 @@
 
 ## 使い方
 
-1. [docs/prerequisites.md](docs/prerequisites.md)で必要なツールとAWSの利用境界を確認します。
-2. [scripts/verify_prereqs.ps1](scripts/verify_prereqs.ps1)でPC側の準備状況を確認します。
-3. 既存のEKSクラスターがある場合は、[scripts/collect_readonly_evidence.ps1](scripts/collect_readonly_evidence.ps1)で読み取り専用の状態確認を行います。
-4. 講義に合わせて[labs](labs)配下の演習を進めます。
-5. 学習後は[docs/cost-and-cleanup.md](docs/cost-and-cleanup.md)で残りリソースを確認します。
+1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。Python 3.11以上だけで実行でき、AWSアカウントやクラスターは不要、費用は0円です。
+2. AWS環境を使う後続演習では、先に[docs/prerequisites.md](docs/prerequisites.md)で必要なツールとAWSの利用境界を確認します。
+3. [scripts/verify_prereqs.ps1](scripts/verify_prereqs.ps1)でPC側の準備状況を確認します。
+4. 既存のEKSクラスターがある場合は、[scripts/collect_readonly_evidence.ps1](scripts/collect_readonly_evidence.ps1)で読み取り専用の状態確認を行います。
+5. 講義に合わせて[labs](labs)配下の演習を進めます。
+6. AWS環境を利用した後は、[docs/cost-and-cleanup.md](docs/cost-and-cleanup.md)で残りリソースを確認します。
 
 ## 演習一覧
 
 | 講義 | 演習 | ファイル |
 | --- | --- | --- |
-| s2-l3 | `kubectl get`で全体を見る | [labs/01-kubectl-first-look.md](labs/01-kubectl-first-look.md) |
-| s2-l4 | `describe`、`logs`、eventsで深掘りする | [labs/02-describe-logs-events.md](labs/02-describe-logs-events.md) |
+| s2-l3 | `kubectl get`に対応する固定データで全体を見る | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
+| s2-l4 | `describe`、`logs`、eventsに対応する固定データで深掘りする | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
 | s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
 | s4-l2 / s4-l3 | CloudWatch LogsとLogs InsightsでPodログを追う | [labs/04-cloudwatch-logs-insights.md](labs/04-cloudwatch-logs-insights.md) |
 | s5-l3 / s5-l4 | PendingとCrashLoopBackOffの初動対応 | [labs/05-pod-failure-first-response.md](labs/05-pod-failure-first-response.md) |
@@ -46,4 +47,4 @@ EKS、EC2、NAT Gateway、CloudWatch Logs、Container Insights、Load Balancer�
 
 ## ライセンス
 
-ライセンスは未設定です。再配布や商用利用は、公開時に設定されるライセンスを確認してください。
+このリポジトリは MIT License で提供します。条件は [LICENSE](LICENSE) を確認してください。

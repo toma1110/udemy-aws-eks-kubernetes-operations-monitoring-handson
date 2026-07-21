@@ -1,32 +1,7 @@
 # 01. `kubectl get`で全体を見る
 
-## 目的
+Section 2の演習は、AWSアカウントやKubernetesクラスターを使わない固定データ版へ移動しました。
 
-クラスターに接続した直後に、Node、namespace、Podの状態を一覧で確認します。
+[固定データで行うKubernetes初動診断](s2-kubernetes-initial-triage/README.md)の手順2と3で、`kubectl get nodes`、`kubectl get namespaces`、`kubectl get pods`に対応する出力を安全に確認できます。
 
-## コマンド
-
-```powershell
-kubectl get nodes
-kubectl get namespaces
-kubectl get pods --all-namespaces
-kubectl get pods -A -o wide
-```
-
-## 見るポイント
-
-- Nodeが`Ready`か
-- `Running`以外のPodがあるか
-- restart回数が増えているPodがあるか
-- 特定のNodeにPodが偏っていないか
-- `kube-system`や`amazon-cloudwatch`のPodが期待通り動いているか
-
-## 記録欄
-
-```text
-確認日時:
-クラスター名:
-気になったnamespace:
-気になったPod:
-最初の仮説:
-```
+実環境のコマンドは対応関係を理解するための参照として同READMEに掲載していますが、この演習では実行しません。

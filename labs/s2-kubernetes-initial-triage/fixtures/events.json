@@ -1,0 +1,8 @@
+{
+  "kind": "EventList",
+  "items": [
+    {"type": "Warning", "reason": "FailedScheduling", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "pending-api"}, "lastTimestamp": "2026-01-15T09:00:00Z", "message": "0/2 nodes are available: 2 Insufficient memory."},
+    {"type": "Warning", "reason": "BackOff", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "crashloop-worker"}, "lastTimestamp": "2026-01-15T09:01:00Z", "message": "Back-off restarting failed container worker."},
+    {"type": "Normal", "reason": "Pulled", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "oom-reporter"}, "lastTimestamp": "2026-01-15T09:02:00Z", "message": "Container image is already present on machine."}
+  ]
+}
