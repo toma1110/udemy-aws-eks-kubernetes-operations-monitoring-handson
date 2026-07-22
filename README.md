@@ -4,7 +4,7 @@
 
 ## 使い方
 
-1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。Python 3.11以上だけで実行でき、AWSアカウントやクラスターは不要、費用は0円です。
+1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。GitとPython 3.11以上があれば実行でき、AWSアカウントやクラスターは不要、費用は0円です。
 2. AWS環境を使う後続演習では、先に[docs/prerequisites.md](docs/prerequisites.md)で必要なツールとAWSの利用境界を確認します。
 3. [scripts/verify_prereqs.ps1](scripts/verify_prereqs.ps1)でPC側の準備状況を確認します。
 4. 既存のEKSクラスターがある場合は、[scripts/collect_readonly_evidence.ps1](scripts/collect_readonly_evidence.ps1)で読み取り専用の状態確認を行います。

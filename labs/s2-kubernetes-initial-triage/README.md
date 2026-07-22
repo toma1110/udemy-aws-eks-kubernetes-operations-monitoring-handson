@@ -11,6 +11,7 @@
 
 ## 前提条件とバージョン
 
+- Git（`git clone` に使用）
 - Python 3.11 以上（標準ライブラリだけを使用）
 - PowerShell、コマンドプロンプト、または一般的なシェル
 - `kubectl`、AWS CLI、AWS アカウント、Kubernetes クラスタは不要
@@ -25,7 +26,7 @@
 | --- | --- |
 | `kubectl get nodes` | `fixtures/get-nodes.json` |
 | `kubectl get namespaces` | `fixtures/get-namespaces.json` |
-| `kubectl get pods -n training` | `fixtures/get-pods.json` |
+| `kubectl get pods -n training -o wide` | `fixtures/get-pods.json` |
 | `kubectl describe pod pending-api -n training` | `fixtures/describe-pending-api.json` |
 | `kubectl describe pod crashloop-worker -n training` | `fixtures/describe-crashloop-worker.json` |
 | `kubectl describe pod oom-reporter -n training` | `fixtures/describe-oom-reporter.json` |

@@ -6,6 +6,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Protect-KubectlContext {
+    param([string]$Value)
+
+    [regex]::Replace($Value, '(?<!\d)\d{12}(?!\d)', '[REDACTED_AWS_ACCOUNT_ID]')
+}
+
 $artifactDir = Join-Path (Get-Location) "artifacts"
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
@@ -32,7 +38,7 @@ $contextOutput = & kubectl config current-context 2>$null
 $contextExitCode = $LASTEXITCODE
 $ErrorActionPreference = $previousErrorActionPreference
 if ($contextExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($contextOutput)) {
-    $result.kubectl_context = $contextOutput
+    $result.kubectl_context = Protect-KubectlContext -Value ($contextOutput -join [Environment]::NewLine)
 }
 else {
     $result.kubectl_context = "not set"

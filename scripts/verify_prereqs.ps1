@@ -17,6 +17,12 @@ function Test-Command {
     [pscustomobject]@{ Name = $Name; Available = $true; Detail = $command.Source }
 }
 
+function Protect-KubectlContext {
+    param([string]$Value)
+
+    [regex]::Replace($Value, '(?<!\d)\d{12}(?!\d)', '[REDACTED_AWS_ACCOUNT_ID]')
+}
+
 Write-Host "Tool check"
 Test-Command "aws" | Format-Table -AutoSize
 Test-Command "kubectl" | Format-Table -AutoSize
@@ -42,7 +48,7 @@ $contextOutput = & kubectl config current-context 2>$null
 $contextExitCode = $LASTEXITCODE
 $ErrorActionPreference = $previousErrorActionPreference
 if ($contextExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($contextOutput)) {
-    Write-Host $contextOutput
+    Write-Host (Protect-KubectlContext -Value ($contextOutput -join [Environment]::NewLine))
 }
 else {
     Write-Host "kubectl context is not set."

@@ -29,7 +29,9 @@ EKSクラスターを新しく作る場合は、AWS公式ドキュメントで�
 .\scripts\verify_prereqs.ps1
 ```
 
-このスクリプトはツールの有無、AWS CLIのリージョン、EKSクラスター一覧の取得可否を確認します。認証情報の値やAWSアカウントIDは表示しません。
+このスクリプトはツールの有無、AWS CLIのリージョン、EKSクラスター一覧の取得可否を確認します。`kubectl`の現在のcontextに前後が数字でない12桁の数字列が含まれる場合、その数字列を`[REDACTED_AWS_ACCOUNT_ID]`に置き換えて表示します。認証情報の値を表示する処理はありません。
+
+`collect_readonly_evidence.ps1`も、保存する`kubectl_context`へ同じ置換を適用します。この置換の対象は`kubectl`のcontextだけです。クラスター名やロググループ名など、ほかのAWS出力にIDが含まれないことを保証するものではないため、生成した`artifacts/readonly_evidence.json`は共有前に確認してください。
 
 ## クラスターがない場合
 
