@@ -1,0 +1,11 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"namespace": "training", "name": "crashloop-oom"},
+  "spec": {"resources": {"requests": {"memory": "128Mi"}, "limits": {"memory": "256Mi"}}},
+  "status": {
+    "phase": "Running",
+    "waitingReason": "CrashLoopBackOff",
+    "restartCount": 4,
+    "lastState": {"reason": "OOMKilled", "exitCode": 137}
+  }
+}

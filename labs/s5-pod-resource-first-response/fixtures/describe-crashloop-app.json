@@ -1,0 +1,10 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"namespace": "training", "name": "crashloop-app"},
+  "status": {
+    "phase": "Running",
+    "waitingReason": "CrashLoopBackOff",
+    "restartCount": 6,
+    "lastState": {"reason": "Error", "exitCode": 1}
+  }
+}

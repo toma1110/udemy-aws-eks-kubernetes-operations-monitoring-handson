@@ -1,0 +1,10 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"namespace": "training", "name": "pending-affinity"},
+  "spec": {
+    "resources": {"requests": {"memory": "128Mi"}},
+    "nodeSelector": {"workload": "gpu"},
+    "requiredNodeAffinity": {"zone": "ap-northeast-1c"}
+  },
+  "status": {"phase": "Pending", "node": null, "conditions": {"PodScheduled": false}}
+}

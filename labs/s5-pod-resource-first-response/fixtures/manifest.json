@@ -1,0 +1,17 @@
+{
+  "schema": "synthetic-pod-resource-triage-fixtures-v1",
+  "files": {
+    "describe-crashloop-app.json": "45111d98ba2e8ed4d49d2d31aae4adace2ccdade6368dff512ac582e3a3db8e7",
+    "describe-crashloop-oom.json": "ba827e842e78190e5d57ebe3fb14326f026223bdc0dd62e512493f591ef3a883",
+    "describe-crashloop-probe.json": "9bfade6d456b1a03a0dc300ddcc39c256a46f75cfdd05eafd55377c889f33b19",
+    "describe-pending-affinity.json": "bda5e4cc48a900701246e84906ec2bdcbc54a54cbca6d13916d474817420cda1",
+    "describe-pending-capacity.json": "c4b1b956f3c13ca0d511c1ff25705150e7c863908ed738793e80519cf4cfbe03",
+    "describe-pending-taint.json": "2bd8865b3971cbcbcb256e5ad63a7ffbac2a08d055dfcb1708abaebf787dc7a0",
+    "events.json": "d34c7b1f94806d2d91bbf67cd32a5397b044ff2cd13b21ced196122ce74cad22",
+    "get-nodes.json": "79558f28a575799b283945298c63a2f1520f90e1e404a3358e276cc68a3ffabb",
+    "get-pods.json": "9017cade79237b532d9ef947850de05670ef275f66ecc0519b3b5cdb8febff39",
+    "logs-crashloop-app-previous.txt": "5a93c5a8e5abb069a4affab887b860e330ddb7920ceea518890d6debffb0ec4b",
+    "logs-crashloop-oom-previous.txt": "569411ba289019c3b33bab23bad2049ba259731091d810913bd463645f7bb4b5",
+    "logs-crashloop-probe-previous.txt": "14d8d089895a7b4937997cfbf8be289369df6aef3dd2b41671d92d4ae3317869"
+  }
+}

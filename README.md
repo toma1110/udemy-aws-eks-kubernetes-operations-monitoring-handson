@@ -8,7 +8,7 @@
 2. AWS環境を使う後続演習では、先に[docs/prerequisites.md](docs/prerequisites.md)で必要なツールとAWSの利用境界を確認します。
 3. [scripts/verify_prereqs.ps1](scripts/verify_prereqs.ps1)でPC側の準備状況を確認します。
 4. 既存のEKSクラスターがある場合は、[scripts/collect_readonly_evidence.ps1](scripts/collect_readonly_evidence.ps1)で読み取り専用の状態確認を行います。
-5. 講義に合わせて[labs](labs)配下の演習を進めます。
+5. 講義に合わせて[labs](labs)配下の演習を進めます。Section 5 は、[Pod リソース問題の初動切り分け](labs/s5-pod-resource-first-response/README.md)で、許可された既存 EKS クラスターを読み取り専用で調べます。クラスター、権限、対象 Pod、Container Insights のデータがない場合も、固定済み合成データへ切り替えて同じ初動観点を再現できます。
 6. AWS環境を利用した後は、[docs/cost-and-cleanup.md](docs/cost-and-cleanup.md)で残りリソースを確認します。
 
 ## 演習一覧
@@ -19,7 +19,7 @@
 | s2-l4 | `describe`、`logs`、eventsに対応する固定データで深掘りする | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
 | s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
 | s4-l2 / s4-l3 | 固定合成ログでCloudWatch Logs / Logs Insightsの絞り込みを練習する | [labs/s4-cloudwatch-logs-insights/README.md](labs/s4-cloudwatch-logs-insights/README.md) |
-| s5-l3 / s5-l4 | PendingとCrashLoopBackOffの初動対応 | [labs/05-pod-failure-first-response.md](labs/05-pod-failure-first-response.md) |
+| s5-l3 / s5-l4 | 既存 EKS を読み取り専用で調べ、利用できない場合は固定データで Pending と CrashLoopBackOff を切り分ける | [labs/s5-pod-resource-first-response/README.md](labs/s5-pod-resource-first-response/README.md) |
 | s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限を確認する | [labs/06-permissions-and-identity.md](labs/06-permissions-and-identity.md) |
 | s7-l2 / s7-l3 | メトリクスやログが見えないときを切り分ける | [labs/07-observability-troubleshooting.md](labs/07-observability-troubleshooting.md) |
 | s8-l3 | 初動対応Runbookを作る | [templates/first-response-runbook.md](templates/first-response-runbook.md) |

@@ -1,0 +1,2 @@
+2026-07-24T00:01:01Z batch size=10000
+2026-07-24T00:01:02Z ERROR memory allocation failed before termination

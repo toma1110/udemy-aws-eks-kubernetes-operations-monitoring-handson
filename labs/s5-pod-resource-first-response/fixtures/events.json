@@ -1,0 +1,11 @@
+{
+  "kind": "EventList",
+  "items": [
+    {"type": "Warning", "reason": "FailedScheduling", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "pending-capacity"}, "message": "0/2 nodes are available: 2 Insufficient memory."},
+    {"type": "Warning", "reason": "FailedScheduling", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "pending-taint"}, "message": "0/2 nodes are available: 1 node(s) had untolerated taint {dedicated: ops}, 1 Insufficient cpu."},
+    {"type": "Warning", "reason": "FailedScheduling", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "pending-affinity"}, "message": "0/2 nodes are available: 2 node(s) didn't match Pod's node affinity/selector."},
+    {"type": "Warning", "reason": "BackOff", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "crashloop-app"}, "message": "Back-off restarting failed container app."},
+    {"type": "Warning", "reason": "BackOff", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "crashloop-oom"}, "message": "Back-off restarting failed container reporter."},
+    {"type": "Warning", "reason": "Unhealthy", "involvedObject": {"kind": "Pod", "namespace": "training", "name": "crashloop-probe"}, "message": "Liveness probe failed: HTTP probe failed with statuscode: 500."}
+  ]
+}

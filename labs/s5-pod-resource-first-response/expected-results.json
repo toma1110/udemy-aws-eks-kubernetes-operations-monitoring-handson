@@ -1,0 +1,99 @@
+{
+  "schema": "pod-resource-first-response-v1",
+  "overview": {
+    "node_count": 2,
+    "not_ready_nodes": [],
+    "pending_pods": [
+      "training/pending-affinity",
+      "training/pending-capacity",
+      "training/pending-taint"
+    ],
+    "crashloop_pods": [
+      "training/crashloop-app",
+      "training/crashloop-oom",
+      "training/crashloop-probe"
+    ]
+  },
+  "findings": [
+    {
+      "pod": "training/pending-capacity",
+      "category": "Pending",
+      "signal": "capacity",
+      "evidence": [
+        "describe: memory request 5Gi and PodScheduled=False",
+        "event: 0/2 nodes are available: 2 Insufficient memory."
+      ],
+      "initial_hypothesis": "The Pod cannot currently fit available node memory.",
+      "next_check": "Compare requests with allocatable memory and currently requested workload resources."
+    },
+    {
+      "pod": "training/pending-taint",
+      "category": "Pending",
+      "signal": "taint/toleration",
+      "evidence": [
+        "describe: tolerations are empty",
+        "event: 0/2 nodes are available: 1 node(s) had untolerated taint {dedicated: ops}, 1 Insufficient cpu."
+      ],
+      "initial_hypothesis": "The Pod does not tolerate the dedicated NoSchedule taint.",
+      "next_check": "Confirm whether placement on the tainted node is intended before changing tolerations."
+    },
+    {
+      "pod": "training/pending-affinity",
+      "category": "Pending",
+      "signal": "nodeSelector/affinity",
+      "evidence": [
+        "describe: nodeSelector workload=gpu",
+        "describe: required node affinity zone=ap-northeast-1c",
+        "event: 0/2 nodes are available: 2 node(s) didn't match Pod's node affinity/selector."
+      ],
+      "initial_hypothesis": "No Node satisfies both required placement constraints.",
+      "next_check": "Compare intended placement with exact Node labels before changing selector or affinity."
+    },
+    {
+      "pod": "training/crashloop-app",
+      "category": "CrashLoopBackOff",
+      "signal": "application failure",
+      "evidence": [
+        "describe: previous reason Error and exit code 1",
+        "previous log: required setting APP_MODE is missing",
+        "event: Back-off restarting failed container app."
+      ],
+      "initial_hypothesis": "The application exits because a required setting is absent.",
+      "next_check": "Inspect the workload configuration source for APP_MODE."
+    },
+    {
+      "pod": "training/crashloop-oom",
+      "category": "CrashLoopBackOff",
+      "signal": "OOMKilled",
+      "evidence": [
+        "describe: previous reason OOMKilled and exit code 137",
+        "describe: memory limit 256Mi",
+        "previous log: memory allocation failed before termination",
+        "event: Back-off restarting failed container reporter."
+      ],
+      "initial_hypothesis": "The container exceeded its memory limit.",
+      "next_check": "Compare pre-termination memory usage with requests and limits."
+    },
+    {
+      "pod": "training/crashloop-probe",
+      "category": "CrashLoopBackOff",
+      "signal": "liveness probe",
+      "evidence": [
+        "describe: liveness path /healthz",
+        "describe: previous reason Error and exit code 143",
+        "event: Liveness probe failed: HTTP probe failed with statuscode: 500.",
+        "previous log: received termination signal"
+      ],
+      "initial_hypothesis": "Repeated liveness probe failures trigger container termination.",
+      "next_check": "Compare probe timing and path with application startup and health behavior."
+    }
+  ],
+  "unsupported_causes": [
+    "PVC or volume binding is not inferred because no matching evidence exists.",
+    "Image pull failure is not inferred because no matching evidence exists."
+  ],
+  "limitations": [
+    "Synthetic local evidence demonstrates an investigation sequence, not live EKS execution.",
+    "Every finding is an initial hypothesis and requires target-specific live evidence before remediation."
+  ]
+}

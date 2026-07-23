@@ -1,0 +1,12 @@
+{
+  "kind": "PodList",
+  "items": [
+    {"metadata": {"namespace": "training", "name": "healthy-api"}, "status": {"phase": "Running", "displayStatus": "Running", "restarts": 0, "node": "worker-general-a"}},
+    {"metadata": {"namespace": "training", "name": "pending-capacity"}, "status": {"phase": "Pending", "displayStatus": "Pending", "restarts": 0, "node": null}},
+    {"metadata": {"namespace": "training", "name": "pending-taint"}, "status": {"phase": "Pending", "displayStatus": "Pending", "restarts": 0, "node": null}},
+    {"metadata": {"namespace": "training", "name": "pending-affinity"}, "status": {"phase": "Pending", "displayStatus": "Pending", "restarts": 0, "node": null}},
+    {"metadata": {"namespace": "training", "name": "crashloop-app"}, "status": {"phase": "Running", "displayStatus": "CrashLoopBackOff", "restarts": 6, "node": "worker-general-a"}},
+    {"metadata": {"namespace": "training", "name": "crashloop-oom"}, "status": {"phase": "Running", "displayStatus": "CrashLoopBackOff", "restarts": 4, "node": "worker-general-a"}},
+    {"metadata": {"namespace": "training", "name": "crashloop-probe"}, "status": {"phase": "Running", "displayStatus": "CrashLoopBackOff", "restarts": 5, "node": "worker-ops-b"}}
+  ]
+}

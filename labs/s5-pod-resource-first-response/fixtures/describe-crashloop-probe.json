@@ -1,0 +1,17 @@
+{
+  "kind": "PodDescription",
+  "metadata": {"namespace": "training", "name": "crashloop-probe"},
+  "spec": {
+    "livenessProbe": {
+      "httpGet": {"path": "/healthz", "port": 8080},
+      "initialDelaySeconds": 3,
+      "periodSeconds": 5
+    }
+  },
+  "status": {
+    "phase": "Running",
+    "waitingReason": "CrashLoopBackOff",
+    "restartCount": 5,
+    "lastState": {"reason": "Error", "exitCode": 143}
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "kind": "NodeList",
+  "items": [
+    {
+      "metadata": {
+        "name": "worker-general-a",
+        "labels": {"workload": "general", "zone": "ap-northeast-1a"}
+      },
+      "spec": {"taints": []},
+      "status": {"ready": true, "allocatable": {"memory": "3900Mi"}}
+    },
+    {
+      "metadata": {
+        "name": "worker-ops-b",
+        "labels": {"workload": "ops", "zone": "ap-northeast-1c"}
+      },
+      "spec": {
+        "taints": [{"key": "dedicated", "value": "ops", "effect": "NoSchedule"}]
+      },
+      "status": {"ready": true, "allocatable": {"memory": "3900Mi"}}
+    }
+  ]
+}
