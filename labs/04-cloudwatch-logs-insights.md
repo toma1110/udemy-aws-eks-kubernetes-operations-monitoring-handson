@@ -4,6 +4,12 @@
 
 CloudWatch LogsとLogs Insightsを使い、namespace、Pod名、時間帯でログを絞り込みます。
 
+## 最初に行うオフライン演習
+
+[固定合成ログを使う演習](s4-cloudwatch-logs-insights/README.md)では、AWSアカウントやEKSクラスターなしで、namespace、Pod名、時間帯、エラーを絞り、時系列で読む手順を再現できます。Python 3.11以上の標準ライブラリだけを使い、費用は0円です。
+
+以下は、承認済みの既存AWS環境で同じ観点を確認する場合の参考です。AWS CLI実行はオフライン演習の完了条件ではありません。
+
 ## Log group確認
 
 ```powershell
@@ -44,3 +50,7 @@ Log group:
 見つかったエラー:
 次に確認する対象:
 ```
+
+## コストとcleanup
+
+Logs Insightsはスキャン量に応じて料金が発生し得ます。実環境では短い時間帯と必要なlog groupに限定し、実行時にAWS公式料金を確認してください。この手順は読み取りだけでリソースを作成しないため、通常はAWS側のcleanupはありません。

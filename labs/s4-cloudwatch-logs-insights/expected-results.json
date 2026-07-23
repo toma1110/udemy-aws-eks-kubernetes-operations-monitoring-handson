@@ -1,0 +1,36 @@
+{
+  "namespace_pod_time": {
+    "schema": "synthetic-logs-insights-result-v1",
+    "query": {
+      "namespace": "training",
+      "pod": "checkout-7d9f",
+      "start": "2026-07-24T10:00:00Z",
+      "end": "2026-07-24T10:06:00Z",
+      "errors_only": false
+    },
+    "count": 5,
+    "events": [
+      {"timestamp":"2026-07-24T10:00:00Z","namespace":"training","pod":"checkout-7d9f","level":"INFO","message":"checkout request accepted","request_id":"req-101"},
+      {"timestamp":"2026-07-24T10:01:00Z","namespace":"training","pod":"checkout-7d9f","level":"WARN","message":"database response is slow","request_id":"req-101"},
+      {"timestamp":"2026-07-24T10:02:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"database timeout","request_id":"req-101"},
+      {"timestamp":"2026-07-24T10:04:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"retry budget exhausted","request_id":"req-101"},
+      {"timestamp":"2026-07-24T10:06:00Z","namespace":"training","pod":"checkout-7d9f","level":"INFO","message":"health check recovered","request_id":"req-104"}
+    ]
+  },
+  "error_timeline": {
+    "schema": "synthetic-logs-insights-result-v1",
+    "query": {
+      "namespace": "training",
+      "pod": null,
+      "start": "2026-07-24T10:00:00Z",
+      "end": "2026-07-24T10:06:00Z",
+      "errors_only": true
+    },
+    "count": 3,
+    "events": [
+      {"timestamp":"2026-07-24T10:02:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"database timeout","request_id":"req-101"},
+      {"timestamp":"2026-07-24T10:03:00Z","namespace":"training","pod":"checkout-8a2c","level":"ERROR","message":"inventory lookup failed","request_id":"req-202"},
+      {"timestamp":"2026-07-24T10:04:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"retry budget exhausted","request_id":"req-101"}
+    ]
+  }
+}

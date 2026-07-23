@@ -18,7 +18,7 @@
 | s2-l3 | `kubectl get`に対応する固定データで全体を見る | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
 | s2-l4 | `describe`、`logs`、eventsに対応する固定データで深掘りする | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
 | s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
-| s4-l2 / s4-l3 | CloudWatch LogsとLogs InsightsでPodログを追う | [labs/04-cloudwatch-logs-insights.md](labs/04-cloudwatch-logs-insights.md) |
+| s4-l2 / s4-l3 | 固定合成ログでCloudWatch Logs / Logs Insightsの絞り込みを練習する | [labs/s4-cloudwatch-logs-insights/README.md](labs/s4-cloudwatch-logs-insights/README.md) |
 | s5-l3 / s5-l4 | PendingとCrashLoopBackOffの初動対応 | [labs/05-pod-failure-first-response.md](labs/05-pod-failure-first-response.md) |
 | s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限を確認する | [labs/06-permissions-and-identity.md](labs/06-permissions-and-identity.md) |
 | s7-l2 / s7-l3 | メトリクスやログが見えないときを切り分ける | [labs/07-observability-troubleshooting.md](labs/07-observability-troubleshooting.md) |

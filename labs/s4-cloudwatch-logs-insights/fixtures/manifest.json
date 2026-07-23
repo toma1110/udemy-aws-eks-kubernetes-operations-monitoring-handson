@@ -1,0 +1,7 @@
+{
+  "schema": "synthetic-cloudwatch-logs-fixture-v1",
+  "description": "Offline synthetic JSON Lines records; not exported from AWS or a real workload.",
+  "files": {
+    "cloudwatch-logs.jsonl": "93c78e63b44b453f2e56dc0c94c8edc4f440c75c2fafa900bf499a00446d7b51"
+  }
+}

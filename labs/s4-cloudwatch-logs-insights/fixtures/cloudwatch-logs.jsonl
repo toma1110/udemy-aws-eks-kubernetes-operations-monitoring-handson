@@ -1,0 +1,10 @@
+{"timestamp":"2026-07-24T09:59:30Z","namespace":"training","pod":"checkout-7d9f","level":"INFO","message":"warmup completed","request_id":"req-000"}
+{"timestamp":"2026-07-24T10:00:00Z","namespace":"training","pod":"checkout-7d9f","level":"INFO","message":"checkout request accepted","request_id":"req-101"}
+{"timestamp":"2026-07-24T10:01:00Z","namespace":"training","pod":"checkout-7d9f","level":"WARN","message":"database response is slow","request_id":"req-101"}
+{"timestamp":"2026-07-24T10:02:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"database timeout","request_id":"req-101"}
+{"timestamp":"2026-07-24T10:03:00Z","namespace":"training","pod":"checkout-8a2c","level":"ERROR","message":"inventory lookup failed","request_id":"req-202"}
+{"timestamp":"2026-07-24T10:04:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"retry budget exhausted","request_id":"req-101"}
+{"timestamp":"2026-07-24T10:05:00Z","namespace":"payments","pod":"payment-5c4b","level":"ERROR","message":"payment provider unavailable","request_id":"req-303"}
+{"timestamp":"2026-07-24T10:06:00Z","namespace":"training","pod":"checkout-7d9f","level":"INFO","message":"health check recovered","request_id":"req-104"}
+{"timestamp":"2026-07-24T10:07:00Z","namespace":"training","pod":"checkout-7d9f","level":"ERROR","message":"outside selected time range","request_id":"req-105"}
+{"timestamp":"2026-07-24T11:00:00Z","namespace":"training","pod":"checkout-8a2c","level":"INFO","message":"steady state","request_id":"req-401"}
