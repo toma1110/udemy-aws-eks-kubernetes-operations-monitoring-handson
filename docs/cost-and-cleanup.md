@@ -41,7 +41,9 @@ kubectl get ingress --all-namespaces
 
 AWS公式ドキュメントでは、クラスター削除前にService、Ingress、node group、Fargate profile、self-managed node用CloudFormation stackなどを確認する流れが示されています。
 
-このリポジトリでは、誤削除を避けるため削除コマンドを一括実行するスクリプトは提供しません。自分が作成したリソース名を確認してから、AWS公式ドキュメントの手順に沿って削除してください。
+一般の演習や既存resourceに対する一括削除scriptは、誤削除を避けるため提供しません。自分が作成したresource名を確認してから、AWS公式ドキュメントの手順に沿って削除してください。
+
+限定例外として、Section 5のlive routeには[共通EKS基盤](../labs/common-eks/README.md)の`delete.ps1`があります。このscriptはSection namespace cleanup後に使い、作成時と同じexact account、Region、固定stack/cluster、ownership tagを再照合して、Section 5の短命な学習用stackだけを削除します。残存確認が完了するまで外部cleanup guardを保持し、既存クラスターやSection 5以外のresourceを一括削除しません。
 
 ## 削除後の確認
 

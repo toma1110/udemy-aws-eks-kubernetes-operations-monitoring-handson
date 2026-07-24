@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: udemy4-c010-s5-20260724-crashloop-app
+  namespace: udemy4-c010-s5-20260724
+  labels:
+    app.kubernetes.io/name: udemy4-c010-s5-20260724-crashloop-app
+    app.kubernetes.io/managed-by: udemy4
+    udemy4.example/scenario: crashloop-app
+spec:
+  activeDeadlineSeconds: 600
+  restartPolicy: Always
+  containers:
+    - name: app
+      image: public.ecr.aws/docker/library/busybox:1.36.1
+      command: ["sh", "-c", "echo 'bounded training failure: APP_MODE is missing' >&2; exit 42"]
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 20m
+          memory: 32Mi

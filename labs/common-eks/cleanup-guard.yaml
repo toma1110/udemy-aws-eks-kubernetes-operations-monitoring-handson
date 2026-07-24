@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: External six-hour cleanup guard for the exact udemy4 C010 common EKS stack.
+
+Parameters:
+  AccountId:
+    Type: String
+    AllowedPattern: "^[0-9]{12}$"
+    Description: Exact account already verified by create.ps1 against STS.
+  CleanupScheduleExpression:
+    Type: String
+    Description: Required UTC EventBridge Scheduler at() expression, validated by create.ps1 to be within six hours.
+    AllowedPattern: "^at\\(20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\)$"
+
+Resources:
+  CleanupSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: udemy4-c010-common-20260724-guard-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: scheduler.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AccountId
+              ArnEquals:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:scheduler:ap-northeast-1:${AccountId}:schedule-group/default"
+      Policies:
+        - PolicyName: DeleteOnlyExactCommonTrainingStack
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: cloudformation:DeleteStack
+                Resource: !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AccountId}:stack/udemy4-c010-common-20260724/*"
+      Tags:
+        - {Key: Course, Value: C010}
+        - {Key: Lab, Value: section-s5}
+        - {Key: ManagedBy, Value: udemy4}
+        - {Key: Purpose, Value: training-cleanup-guard}
+        - {Key: TemplateContract, Value: udemy4-c010-cleanup-guard-v1-20260724}
+
+  AutomaticCleanupSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: udemy4-c010-common-20260724-guard-schedule
+      Description: Deletes only the exact short-lived common EKS stack while remaining external to it.
+      ScheduleExpression: !Ref CleanupScheduleExpression
+      ScheduleExpressionTimezone: UTC
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      State: ENABLED
+      Target:
+        Arn: arn:aws:scheduler:::aws-sdk:cloudformation:deleteStack
+        RoleArn: !GetAtt CleanupSchedulerRole.Arn
+        Input: '{"StackName":"udemy4-c010-common-20260724"}'
+
+Outputs:
+  TargetStackName:
+    Value: udemy4-c010-common-20260724
+  Region:
+    Value: !Ref AWS::Region
+  TemplateContract:
+    Value: udemy4-c010-cleanup-guard-v1-20260724
+  ScheduleName:
+    Value: udemy4-c010-common-20260724-guard-schedule
+  RoleName:
+    Value: udemy4-c010-common-20260724-guard-role

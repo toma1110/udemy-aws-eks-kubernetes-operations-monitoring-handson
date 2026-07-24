@@ -4,12 +4,17 @@
 
 ## 使い方
 
-1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。GitとPython 3.11以上があれば実行でき、AWSアカウントやクラスターは不要、費用は0円です。
-2. AWS環境を使う後続演習では、先に[docs/prerequisites.md](docs/prerequisites.md)で必要なツールとAWSの利用境界を確認します。
-3. [scripts/verify_prereqs.ps1](scripts/verify_prereqs.ps1)でPC側の準備状況を確認します。
-4. 既存のEKSクラスターがある場合は、[scripts/collect_readonly_evidence.ps1](scripts/collect_readonly_evidence.ps1)で読み取り専用の状態確認を行います。
-5. 講義に合わせて[labs](labs)配下の演習を進めます。Section 5 は、[Pod リソース問題の初動切り分け](labs/s5-pod-resource-first-response/README.md)で、許可された既存 EKS クラスターを読み取り専用で調べます。クラスター、権限、対象 Pod、Container Insights のデータがない場合も、固定済み合成データへ切り替えて同じ初動観点を再現できます。
-6. AWS環境を利用した後は、[docs/cost-and-cleanup.md](docs/cost-and-cleanup.md)で残りリソースを確認します。
+```powershell
+git clone https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson.git
+cd udemy-aws-eks-kubernetes-operations-monitoring-handson
+```
+
+1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。GitとPython 3.11以上があれば実行でき、AWSアカウントやクラスターは不要、追加のクラウド費用はありません。
+2. AWS環境を使う演習では、先に[前提条件](docs/prerequisites.md)と[コスト・クリーンアップ](docs/cost-and-cleanup.md)を確認します。
+3. [PC側の前提条件確認](scripts/verify_prereqs.ps1)を実行します。
+4. Section 5は、[Pending / CrashLoopBackOffの初動切り分け](labs/s5-pod-resource-first-response/README.md)を入口にします。repository rootから`cd labs/s5-pod-resource-first-response`を実行し、そのREADMEに従って共通EKS基盤とSection scenarioを順に進めます。作成を許可された自分のAWSアカウントだけを使用し、約USD 0.97/6時間の基礎概算と変動要因を確認してから始めます。
+5. AWSを使えない場合は、Section 5の同じREADMEにあるfixture routeを実行します。Python 3.11以上だけで決定的に再現でき、AWSアカウントやクラスターは不要です。
+6. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
 
 ## 演習一覧
 
@@ -19,7 +24,7 @@
 | s2-l4 | `describe`、`logs`、eventsに対応する固定データで深掘りする | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
 | s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
 | s4-l2 / s4-l3 | 固定合成ログでCloudWatch Logs / Logs Insightsの絞り込みを練習する | [labs/s4-cloudwatch-logs-insights/README.md](labs/s4-cloudwatch-logs-insights/README.md) |
-| s5-l3 / s5-l4 | 既存 EKS を読み取り専用で調べ、利用できない場合は固定データで Pending と CrashLoopBackOff を切り分ける | [labs/s5-pod-resource-first-response/README.md](labs/s5-pod-resource-first-response/README.md) |
+| s5-l3 / s5-l4 | 短命なEKS基盤でPendingとCrashLoopBackOffを調べ、AWSを使えない場合は固定データで同じ初動観点を練習する | [labs/s5-pod-resource-first-response/README.md](labs/s5-pod-resource-first-response/README.md) |
 | s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限を確認する | [labs/06-permissions-and-identity.md](labs/06-permissions-and-identity.md) |
 | s7-l2 / s7-l3 | メトリクスやログが見えないときを切り分ける | [labs/07-observability-troubleshooting.md](labs/07-observability-troubleshooting.md) |
 | s8-l3 | 初動対応Runbookを作る | [templates/first-response-runbook.md](templates/first-response-runbook.md) |
@@ -36,7 +41,9 @@ EKS、EC2、NAT Gateway、CloudWatch Logs、Container Insights、Load Balancer�
 - 削除対象にしてよいリソース
 - 残してよいログと残してはいけないログ
 
-このリポジトリのスクリプトは、既定では読み取り専用の確認に寄せています。削除や作成は、各自の環境で対象を確認してから実行してください。
+`labs/common-eks/scripts/create.ps1`とSection 5のscenario/cleanup scriptは、明示された固定名の学習用リソースを作成・削除します。ほかの既存クラスター向け確認scriptとfixture routeは読み取り専用です。固定stackが既に存在する場合は更新や引き継ぎをせず停止します。
+
+Section 5のlive routeはPowerShell 7、AWS CLI v2、`kubectl`、承認済みAWS認証を前提にします。Pod imageは`busybox:1.36.1`と`python:3.12-alpine`へtag固定されています。EKS control plane versionはtemplateで固定せず、実行時に利用可能な標準サポート版が選ばれるため、作成直前にAWS公式情報と`kubectl`互換性を再確認してください。
 
 ## 公式ドキュメント
 

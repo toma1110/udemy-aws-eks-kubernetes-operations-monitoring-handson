@@ -1,47 +1,38 @@
 # 05. PendingとCrashLoopBackOffの初動対応
 
-実習本体は[Pod リソース問題の初動切り分け](s5-pod-resource-first-response/README.md)です。Primary route では、許可された既存 EKS クラスターの context、namespace、Pod を固定し、`kubectl`、EKS Console、Container Insightsを読み取り専用で照合します。問題状態の Pod、参照権限、またはメトリクスがない場合も異常とは断定せず、「live結果なし」と記録して固定済み合成データの fallback route へ進みます。
+実習本体は[Pending / CrashLoopBackOffの初動切り分け](s5-pod-resource-first-response/README.md)です。
 
-fallback route は Python 3.11 以上と PowerShell だけで再現でき、AWS アカウントや Kubernetes クラスターは不要です。どちらのrouteも新しいクラウドリソースを作成、更新、再起動、scale、削除しません。既存 EKS、Node、CloudWatch、Container Insightsには既存料金が発生している場合があります。
+- Live route: [共通EKS基盤](common-eks/README.md)で短命なEKS clusterと1台のNodeを作り、Section専用namespaceへ安全に制限した3 Podを配置します。AWS費用と作成・削除操作を伴います。
+- Fixture route: Python 3.11以上で固定済み合成データを調べます。AWSアカウントやKubernetes clusterは不要で、追加のクラウド費用はありません。
 
-以下は、live routeで同じ対象を確認するときの読み取り専用メモです。`<context>`、`<namespace>`、`<pod>`、`<node>`を許可された対象へ置き換え、対象を固定できない場合は実行せずfallback routeへ進んでください。ここに示す出力は例ではなく確認コマンドだけであり、PendingやCrashLoopBackOffが実環境に存在するとは主張しません。
+Live routeを始める前に、exact AWS account、`ap-northeast-1`、2つのAZ、信頼できる`/32` CIDR、削除期限を確認します。基礎概算は約USD 0.97/6時間ですが、transfer、CloudWatch、税、為替、価格変更などは含みません。実行直前に公式料金を確認してください。
 
-## Pendingを見る
-
-```powershell
-kubectl --context <context> get pod <pod> -n <namespace> -o wide
-kubectl --context <context> describe pod <pod> -n <namespace>
-kubectl --context <context> get events -n <namespace> --field-selector involvedObject.kind=Pod,involvedObject.name=<pod> --sort-by=.lastTimestamp
-kubectl --context <context> get nodes -o wide
-kubectl --context <context> describe node <node>
-```
-
-確認観点:
-
-- insufficient cpu
-- insufficient memory
-- taintとtoleration
-- node selector
-- affinity
-- volume mount
-- image pull
-
-## CrashLoopBackOffを見る
+## 実行順序
 
 ```powershell
-kubectl --context <context> describe pod <pod> -n <namespace>
-kubectl --context <context> logs <pod> -n <namespace> --tail=100
-kubectl --context <context> logs <pod> -n <namespace> --previous --tail=100
-kubectl --context <context> get events -n <namespace> --field-selector involvedObject.kind=Pod,involvedObject.name=<pod> --sort-by=.lastTimestamp
+cd labs/s5-pod-resource-first-response
 ```
 
-確認観点:
+1. 実習本体READMEのpreflightを実行する。
+2. 共通EKS基盤を作成し、cluster `ACTIVE`、Node `Ready`を確認する。
+3. Section scenarioをapplyする。
+4. `get`、`describe`、`logs`、eventsで同じPodを照合する。
+5. Section namespaceを先に削除する。
+6. 共通EKS基盤を削除し、stack、cluster、EC2、EBS、ENI、CloudWatch残存がないことを確認する。
 
-- exit code
-- OOMKilled
-- probe failure
-- missing environment variable
-- application error
+途中で失敗しても、作成済みの外部cleanup guardを自己判断で消さないでください。Section cleanupの後、共通READMEの`delete.ps1`を実行します。残存確認が失敗した場合、guardは保持されます。
+
+## 調査時の確認コマンド
+
+```powershell
+kubectl get pods -n udemy4-c010-s5-20260724 -o wide
+kubectl get events -n udemy4-c010-s5-20260724 --sort-by=.lastTimestamp
+kubectl describe pod udemy4-c010-s5-20260724-pending-capacity -n udemy4-c010-s5-20260724
+kubectl describe pod udemy4-c010-s5-20260724-crashloop-app -n udemy4-c010-s5-20260724
+kubectl logs udemy4-c010-s5-20260724-crashloop-app -n udemy4-c010-s5-20260724 --previous --tail=100
+kubectl describe pod udemy4-c010-s5-20260724-crashloop-memory -n udemy4-c010-s5-20260724
+kubectl logs udemy4-c010-s5-20260724-crashloop-memory -n udemy4-c010-s5-20260724 --previous --tail=100
+```
 
 ## 記録欄
 
@@ -56,4 +47,4 @@ Node:
 次の読み取り確認:
 ```
 
-観察できた事実だけを記録します。別 Pod のeventやログを代用せず、状態名だけで原因を確定しません。具体的な手順、fixtureの期待結果、コスト、クリーンアップ、安全境界は実習本体のREADMEを参照してください。
+観察できた事実だけを記録します。別Podのeventやログを代用せず、状態名だけで原因を確定しません。具体的な期待結果、fixture fallback、コスト、cleanup、安全境界は実習本体READMEを参照してください。

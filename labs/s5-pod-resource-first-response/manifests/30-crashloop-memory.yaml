@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: udemy4-c010-s5-20260724-crashloop-memory
+  namespace: udemy4-c010-s5-20260724
+  labels:
+    app.kubernetes.io/name: udemy4-c010-s5-20260724-crashloop-memory
+    app.kubernetes.io/managed-by: udemy4
+    udemy4.example/scenario: crashloop-memory
+spec:
+  activeDeadlineSeconds: 600
+  restartPolicy: Always
+  containers:
+    - name: memory-demo
+      image: public.ecr.aws/docker/library/python:3.12-alpine
+      command:
+        - python
+        - -c
+        - "import sys,time; print('bounded training allocation: 64 MiB', file=sys.stderr, flush=True); x=bytearray(64*1024*1024); time.sleep(5)"
+      resources:
+        requests:
+          cpu: 5m
+          memory: 8Mi
+        limits:
+          cpu: 50m
+          memory: 24Mi

@@ -1,0 +1,281 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Reusable short-lived EKS foundation for udemy4 C010 Sections s2-s7.
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: udemy4-c010-common-20260724
+    AllowedValues:
+      - udemy4-c010-common-20260724
+  AvailabilityZoneA:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: First selected AZ, preflight-verified for t3.medium.
+  AvailabilityZoneB:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Second distinct selected AZ, preflight-verified for t3.medium.
+  ApiPublicAccessCidr:
+    Type: String
+    Description: Exact trusted client IPv4 CIDR. There is intentionally no default.
+    AllowedPattern: "^(?!0\\.0\\.0\\.0/0$)(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/(?:[0-9]|[12][0-9]|3[0-2])$"
+    ConstraintDescription: Supply one valid IPv4 CIDR other than 0.0.0.0/0.
+  CourseTag:
+    Type: String
+    Default: C010
+    AllowedValues: [C010]
+  LabTag:
+    Type: String
+    Default: section-s5
+    AllowedValues: [section-s5]
+  ManagedByTag:
+    Type: String
+    Default: udemy4
+    AllowedValues: [udemy4]
+  PurposeTag:
+    Type: String
+    Default: training
+    AllowedValues: [training]
+  TemplateContractTag:
+    Type: String
+    Default: udemy4-c010-common-eks-v2-20260724
+    AllowedValues: [udemy4-c010-common-eks-v2-20260724]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - {Key: Name, Value: !Sub "${ClusterName}-vpc"}
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - {Key: Name, Value: !Sub "${ClusterName}-igw"}
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref Vpc
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Name, Value: !Sub "${ClusterName}-public"}
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZoneA
+      CidrBlock: 10.42.0.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Name, Value: !Sub "${ClusterName}-public-a"}
+        - {Key: "kubernetes.io/role/elb", Value: "1"}
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZoneB
+      CidrBlock: 10.42.1.0/24
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Name, Value: !Sub "${ClusterName}-public-b"}
+        - {Key: "kubernetes.io/role/elb", Value: "1"}
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  PublicSubnetARoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetA
+
+  PublicSubnetBRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnetB
+
+  ClusterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: eks.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
+      Tags:
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  NodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+      Tags:
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+
+  NodeLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs:
+              DeleteOnTermination: true
+              Encrypted: true
+              VolumeSize: 20
+              VolumeType: gp3
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpPutResponseHopLimit: 2
+          HttpTokens: required
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - {Key: Course, Value: !Ref CourseTag}
+              - {Key: Lab, Value: !Ref LabTag}
+              - {Key: ManagedBy, Value: !Ref ManagedByTag}
+              - {Key: Purpose, Value: !Ref PurposeTag}
+              - {Key: TemplateContract, Value: !Ref TemplateContractTag}
+          - ResourceType: volume
+            Tags:
+              - {Key: Course, Value: !Ref CourseTag}
+              - {Key: Lab, Value: !Ref LabTag}
+              - {Key: ManagedBy, Value: !Ref ManagedByTag}
+              - {Key: Purpose, Value: !Ref PurposeTag}
+              - {Key: TemplateContract, Value: !Ref TemplateContractTag}
+          - ResourceType: network-interface
+            Tags:
+              - {Key: Course, Value: !Ref CourseTag}
+              - {Key: Lab, Value: !Ref LabTag}
+              - {Key: ManagedBy, Value: !Ref ManagedByTag}
+              - {Key: Purpose, Value: !Ref PurposeTag}
+              - {Key: TemplateContract, Value: !Ref TemplateContractTag}
+      TagSpecifications:
+        - ResourceType: launch-template
+          Tags:
+            - {Key: Course, Value: !Ref CourseTag}
+            - {Key: Lab, Value: !Ref LabTag}
+            - {Key: ManagedBy, Value: !Ref ManagedByTag}
+            - {Key: Purpose, Value: !Ref PurposeTag}
+
+  EksCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      AccessConfig:
+        AuthenticationMode: API_AND_CONFIG_MAP
+        BootstrapClusterCreatorAdminPermissions: true
+      ResourcesVpcConfig:
+        EndpointPrivateAccess: false
+        EndpointPublicAccess: true
+        PublicAccessCidrs:
+          - !Ref ApiPublicAccessCidr
+        SubnetIds:
+          - !Ref PublicSubnetA
+          - !Ref PublicSubnetB
+      RoleArn: !GetAtt ClusterRole.Arn
+      UpgradePolicy:
+        SupportType: STANDARD
+      Tags:
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+        - {Key: TemplateContract, Value: !Ref TemplateContractTag}
+
+  ManagedNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn:
+      - PublicSubnetARoute
+      - PublicSubnetBRoute
+    Properties:
+      ClusterName: !Ref EksCluster
+      NodegroupName: !Sub "${ClusterName}-node"
+      NodeRole: !GetAtt NodeRole.Arn
+      CapacityType: ON_DEMAND
+      InstanceTypes: [t3.medium]
+      LaunchTemplate:
+        Id: !Ref NodeLaunchTemplate
+        Version: !GetAtt NodeLaunchTemplate.LatestVersionNumber
+      ScalingConfig:
+        DesiredSize: 1
+        MinSize: 1
+        MaxSize: 1
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      Tags:
+        Course: !Ref CourseTag
+        Lab: !Ref LabTag
+        ManagedBy: !Ref ManagedByTag
+        Purpose: !Ref PurposeTag
+        TemplateContract: !Ref TemplateContractTag
+
+Outputs:
+  ClusterName:
+    Value: !Ref EksCluster
+  NodeGroupName:
+    Value: !Ref ManagedNodeGroup
+  Region:
+    Value: !Ref AWS::Region
+  VpcId:
+    Value: !Ref Vpc
+  PublicSubnetIds:
+    Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+  ApiPublicAccessCidr:
+    Value: !Ref ApiPublicAccessCidr
+  TemplateContract:
+    Value: !Ref TemplateContractTag

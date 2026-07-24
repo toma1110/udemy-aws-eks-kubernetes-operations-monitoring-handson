@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Analyze immutable synthetic Pending and CrashLoopBackOff evidence."""
+"""Analyze immutable regression fixtures.
+
+The deployable EKS lab is the primary route. These synthetic inputs remain a
+credential-free fallback and must never be presented as live-cluster evidence.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent
 DEFAULT_FIXTURES = ROOT / "fixtures"
 EXPECTED = ROOT / "expected-results.json"
+PRIMARY_LAB_MANIFESTS = (
+    ROOT / "manifests" / "00-namespace.yaml",
+    ROOT / "manifests" / "10-pending-capacity.yaml",
+    ROOT / "manifests" / "20-crashloop-app.yaml",
+    ROOT / "manifests" / "30-crashloop-memory.yaml",
+)
 
 
 class EvidenceError(ValueError):
