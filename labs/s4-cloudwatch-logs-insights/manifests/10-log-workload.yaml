@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: s4-log-generator
+  namespace: udemy4-s4-logs
+  labels:
+    course: c010
+    section: s4
+    managed-by: udemy4
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 1800
+  template:
+    metadata:
+      labels:
+        app: s4-log-generator
+        course: c010
+        section: s4
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: generator
+          image: public.ecr.aws/docker/library/busybox@sha256:b7f3d86d6e84fc17718c48bcde1450807faa2d56704205c697b4bd5df7b9e29f
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              emit() {
+                printf '{"timestamp":"%s","namespace":"%s","pod":"%s","level":"%s","message":"%s","request_id":"%s"}\n' \
+                  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$K8S_NAMESPACE" "$K8S_POD_NAME" "$1" "$2" "$3"
+                sleep 1
+              }
+              emit INFO "checkout request accepted" req-401
+              emit WARN "database response is slow" req-401
+              emit ERROR "database timeout" req-401
+              emit INFO "retry started" req-401
+              emit ERROR "retry budget exhausted" req-401
+              emit INFO "health check recovered" req-402

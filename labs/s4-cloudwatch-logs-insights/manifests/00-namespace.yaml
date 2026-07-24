@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: udemy4-s4-logs
+  labels:
+    course: c010
+    section: s4
+    managed-by: udemy4

@@ -1,0 +1,4 @@
+fields @timestamp, namespace, pod, level, message, request_id
+| filter namespace = "udemy4-s4-logs" and pod like /^s4-log-generator-/ and level = "ERROR"
+| sort @timestamp asc
+| limit 20
