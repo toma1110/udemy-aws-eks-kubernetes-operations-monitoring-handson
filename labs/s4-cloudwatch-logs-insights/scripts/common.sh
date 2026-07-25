@@ -81,41 +81,45 @@ aws_json() {
 }
 
 assert_exact_stack_tags() {
-  local tags_json="$1" actual expected
-  actual="$(
-    python3 - "$tags_json" <<'PY'
+  local tags_json="$1"
+  python3 - "$tags_json" "$TEMPLATE_CONTRACT" <<'PY' ||
 import json
 import sys
 
 items = json.loads(sys.argv[1])
-if not isinstance(items, list):
+if (
+    not isinstance(items, list)
+    or len(items) != 5
+    or any(
+        not isinstance(item, dict)
+        or set(item) != {"Key", "Value"}
+        or not isinstance(item["Key"], str)
+        or not isinstance(item["Value"], str)
+        for item in items
+    )
+):
     raise SystemExit(1)
-pairs = []
-keys = set()
-for item in items:
-    if set(item) != {"Key", "Value"} or item["Key"] in keys:
-        raise SystemExit(1)
-    keys.add(item["Key"])
-    pairs.append(f'{item["Key"]}={item["Value"]}')
-print("\n".join(sorted(pairs)))
+actual = {item["Key"]: item["Value"] for item in items}
+expected = {
+    "Course": "C010",
+    "ManagedBy": "udemy4",
+    "Purpose": "training",
+    "TemplateContract": sys.argv[2],
+    "WorkPackage": "c010-common-eks",
+}
+if len(actual) != len(items) or actual != expected:
+    raise SystemExit(1)
 PY
-  )" || die "Common stack contains invalid or duplicate ownership tags."
-  expected="$(
-    printf '%s\n' \
-      "Course=C010" \
-      "ManagedBy=udemy4" \
-      "Purpose=training" \
-      "TemplateContract=$TEMPLATE_CONTRACT" \
-      "WorkPackage=c010-common-eks" | sort
-  )"
-  [[ "$actual" == "$expected" ]] ||
     die "Common stack has unexpected or missing ownership tags."
 }
 
 assert_exact_eks_tags() {
-  local tags_object="$1" stack_id="$2" actual expected
-  actual="$(
-    python3 - "$tags_object" <<'PY'
+  local tags_object="$1" stack_id="$2"
+  python3 - \
+    "$tags_object" \
+    "$stack_id" \
+    "$CLUSTER_NAME" \
+    "$TEMPLATE_CONTRACT" <<'PY' ||
 import json
 import sys
 
@@ -124,23 +128,20 @@ if not isinstance(items, dict) or not all(
     isinstance(key, str) and isinstance(value, str) for key, value in items.items()
 ):
     raise SystemExit(1)
-print("\n".join(sorted(f"{key}={value}" for key, value in items.items())))
+expected = {
+    "Course": "C010",
+    "ManagedBy": "udemy4",
+    "Purpose": "training",
+    "TemplateContract": sys.argv[4],
+    "WorkPackage": "c010-common-eks",
+    "aws:cloudformation:logical-id": "EksCluster",
+    "aws:cloudformation:stack-id": sys.argv[2],
+    "aws:cloudformation:stack-name": sys.argv[3],
+}
+if items != expected:
+    raise SystemExit(1)
 PY
-  )" ||
     die "EKS cluster contains invalid ownership tags."
-  expected="$(
-    printf '%s\n' \
-      "Course=C010" \
-      "ManagedBy=udemy4" \
-      "Purpose=training" \
-      "TemplateContract=$TEMPLATE_CONTRACT" \
-      "WorkPackage=c010-common-eks" \
-      "aws:cloudformation:logical-id=EksCluster" \
-      "aws:cloudformation:stack-id=$stack_id" \
-      "aws:cloudformation:stack-name=$CLUSTER_NAME" | sort
-  )"
-  [[ "$actual" == "$expected" ]] ||
-    die "EKS cluster has unexpected or missing ownership/system tags."
 }
 
 assert_fixed_stack_outputs() {

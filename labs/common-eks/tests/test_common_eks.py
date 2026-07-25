@@ -689,13 +689,57 @@ class CommonEksContractTests(unittest.TestCase):
             'CLUSTER_NAME="udemy4-c010-common-20260724"',
             "AWS_ACCOUNT_ID",
             "STS account does not equal AWS_ACCOUNT_ID",
-            "Course=C010",
-            "WorkPackage=c010-common-eks",
-            "ManagedBy=udemy4",
-            "Purpose=training",
-            "TemplateContract",
+            '"Course": "C010"',
+            '"WorkPackage": "c010-common-eks"',
+            '"ManagedBy": "udemy4"',
+            '"Purpose": "training"',
+            '"TemplateContract"',
         ):
             self.assertIn(token, self.joined)
+
+    def test_exact_tag_maps_are_locale_independent_and_do_not_call_sort(self):
+        stack_tags = json.dumps(
+            [
+                {"Key": "WorkPackage", "Value": "c010-common-eks"},
+                {"Key": "TemplateContract", "Value": "udemy4-c010-common-eks-v2-20260724"},
+                {"Key": "Purpose", "Value": "training"},
+                {"Key": "ManagedBy", "Value": "udemy4"},
+                {"Key": "Course", "Value": "C010"},
+            ]
+        )
+        guard_tags = json.dumps(
+            [
+                {"Key": "WorkPackage", "Value": "c010-common-eks"},
+                {"Key": "TemplateContract", "Value": "udemy4-c010-cleanup-guard-v2-20260725"},
+                {"Key": "Purpose", "Value": "training-cleanup-guard"},
+                {"Key": "ManagedBy", "Value": "udemy4"},
+                {"Key": "Course", "Value": "C010"},
+            ]
+        )
+        stack_id = (
+            "arn:aws:cloudformation:ap-northeast-1:123456789012:"
+            "stack/udemy4-c010-common-20260724/01234567-89ab-cdef-0123-456789abcdef"
+        )
+        eks_tags = json.dumps(
+            {
+                "aws:cloudformation:stack-name": "udemy4-c010-common-20260724",
+                "aws:cloudformation:stack-id": stack_id,
+                "aws:cloudformation:logical-id": "EksCluster",
+                "WorkPackage": "c010-common-eks",
+                "TemplateContract": "udemy4-c010-common-eks-v2-20260724",
+                "Purpose": "training",
+                "ManagedBy": "udemy4",
+                "Course": "C010",
+            }
+        )
+        result = run_bash(
+            "sort() { echo 'external sort must not be called' >&2; return 99; }; "
+            "export -f sort; export LC_ALL=C.utf8; "
+            f"assert_exact_tag_map {shlex.quote(stack_tags)} stack; "
+            f"assert_exact_guard_tag_map {shlex.quote(guard_tags)}; "
+            f"assert_exact_eks_cluster_tags {shlex.quote(eks_tags)} {shlex.quote(stack_id)}"
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_api_cidr_has_no_default_and_rejects_world(self):
         cidr = self.template["Parameters"]["ApiPublicAccessCidr"]
@@ -1098,6 +1142,10 @@ class CommonEksContractTests(unittest.TestCase):
             "scripts/verify-cleanup.sh",
             "AWS_ACCOUNT_ID",
             "Section 4",
+            "Section 5",
+            "labs/s4-cloudwatch-logs-insights/scripts/cleanup-section.sh",
+            "labs/s5-pod-resource-first-response/scripts/cleanup-section.sh",
+            "s4とs5両方の残存gate",
             "guardを最後",
         ):
             self.assertIn(token, readme)

@@ -123,7 +123,12 @@ deadline workflowはCloudShellのIPに依存しません。cleanup時だけLambd
 
 ## Cleanup
 
-Section 4のREADMEに従ってSection namespaceとlog groupを先に削除します。その後、common EKSを削除します。
+実行したSectionに合わせて、Section固有resourceを先に削除します。
+
+- Section 4: `labs/s4-cloudwatch-logs-insights/scripts/cleanup-section.sh`を実行し、exact namespaceとlog groupの不存在確認をpassさせます。
+- Section 5: `labs/s5-pod-resource-first-response/scripts/cleanup-section.sh`を実行し、exact namespaceの不存在確認をpassさせます。
+
+どちらの場合もs4とs5両方の残存gateがpassした後にだけ、次のcommon `delete.sh`でcommon EKSを削除します。
 
 ```bash
 "$COMMON_EKS_DIR/scripts/delete.sh"

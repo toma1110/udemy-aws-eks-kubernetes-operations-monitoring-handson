@@ -200,43 +200,67 @@ PY
 
 assert_exact_tag_map() {
   local tags_json="$1" target="$2"
-  local actual expected
-  actual="$(
-    jq -er '
-      if (map(.Key) | length) != (map(.Key) | unique | length) then error("duplicate tag") else . end
-      | sort_by(.Key) | map("\(.Key)=\(.Value)") | .[]
-    ' <<<"$tags_json"
-  )" || die "$target contains invalid or duplicate ownership tags."
-  expected="$(
-    printf '%s\n' \
-      "Course=C010" \
-      "ManagedBy=udemy4" \
-      "Purpose=training" \
-      "TemplateContract=$TEMPLATE_CONTRACT" \
-      "WorkPackage=c010-common-eks" | sort
-  )"
-  [[ "$actual" == "$expected" ]] ||
+  python3 - "$tags_json" "$TEMPLATE_CONTRACT" <<'PY' ||
+import json
+import sys
+
+items = json.loads(sys.argv[1])
+if (
+    not isinstance(items, list)
+    or len(items) != 5
+    or any(
+        not isinstance(item, dict)
+        or set(item) != {"Key", "Value"}
+        or not isinstance(item["Key"], str)
+        or not isinstance(item["Value"], str)
+        for item in items
+    )
+):
+    raise SystemExit(1)
+actual = {item["Key"]: item["Value"] for item in items}
+expected = {
+    "Course": "C010",
+    "ManagedBy": "udemy4",
+    "Purpose": "training",
+    "TemplateContract": sys.argv[2],
+    "WorkPackage": "c010-common-eks",
+}
+if len(actual) != len(items) or actual != expected:
+    raise SystemExit(1)
+PY
     die "$target has unexpected or missing ownership tags."
 }
 
 assert_exact_guard_tag_map() {
   local tags_json="$1"
-  local actual expected
-  actual="$(
-    jq -er '
-      if (map(.Key) | length) != (map(.Key) | unique | length) then error("duplicate tag") else . end
-      | sort_by(.Key) | map("\(.Key)=\(.Value)") | .[]
-    ' <<<"$tags_json"
-  )" || die "Cleanup guard contains invalid or duplicate ownership tags."
-  expected="$(
-    printf '%s\n' \
-      "Course=C010" \
-      "ManagedBy=udemy4" \
-      "Purpose=training-cleanup-guard" \
-      "TemplateContract=$GUARD_TEMPLATE_CONTRACT" \
-      "WorkPackage=c010-common-eks" | sort
-  )"
-  [[ "$actual" == "$expected" ]] ||
+  python3 - "$tags_json" "$GUARD_TEMPLATE_CONTRACT" <<'PY' ||
+import json
+import sys
+
+items = json.loads(sys.argv[1])
+if (
+    not isinstance(items, list)
+    or len(items) != 5
+    or any(
+        not isinstance(item, dict)
+        or set(item) != {"Key", "Value"}
+        or not isinstance(item["Key"], str)
+        or not isinstance(item["Value"], str)
+        for item in items
+    )
+):
+    raise SystemExit(1)
+actual = {item["Key"]: item["Value"] for item in items}
+expected = {
+    "Course": "C010",
+    "ManagedBy": "udemy4",
+    "Purpose": "training-cleanup-guard",
+    "TemplateContract": sys.argv[2],
+    "WorkPackage": "c010-common-eks",
+}
+if len(actual) != len(items) or actual != expected:
+    raise SystemExit(1)
+PY
     die "Cleanup guard stack has unexpected or missing ownership tags."
 }
 
@@ -271,20 +295,28 @@ get_expected_guard_binding() {
 
 assert_exact_eks_cluster_tags() {
   local tags_object="$1" stack_id="$2"
-  local actual expected
-  actual="$(jq -r 'to_entries | sort_by(.key) | map("\(.key)=\(.value)") | .[]' <<<"$tags_object")"
-  expected="$(
-    printf '%s\n' \
-      "Course=C010" \
-      "ManagedBy=udemy4" \
-      "Purpose=training" \
-      "TemplateContract=$TEMPLATE_CONTRACT" \
-      "WorkPackage=c010-common-eks" \
-      "aws:cloudformation:logical-id=EksCluster" \
-      "aws:cloudformation:stack-id=$stack_id" \
-      "aws:cloudformation:stack-name=$STACK_NAME" | sort
-  )"
-  [[ "$actual" == "$expected" ]] ||
+  python3 - \
+    "$tags_object" \
+    "$stack_id" \
+    "$STACK_NAME" \
+    "$TEMPLATE_CONTRACT" <<'PY' ||
+import json
+import sys
+
+items = json.loads(sys.argv[1])
+expected = {
+    "Course": "C010",
+    "ManagedBy": "udemy4",
+    "Purpose": "training",
+    "TemplateContract": sys.argv[4],
+    "WorkPackage": "c010-common-eks",
+    "aws:cloudformation:logical-id": "EksCluster",
+    "aws:cloudformation:stack-id": sys.argv[2],
+    "aws:cloudformation:stack-name": sys.argv[3],
+}
+if items != expected:
+    raise SystemExit(1)
+PY
     die "EKS cluster has unexpected or missing ownership/system tags."
 }
 

@@ -164,6 +164,40 @@ class LiveContractTests(unittest.TestCase):
             result = run_bash(rejected)
             self.assertNotEqual(0, result.returncode, rejected)
 
+    def test_exact_tag_maps_are_locale_independent_and_do_not_call_sort(self) -> None:
+        stack_id = (
+            "arn:aws:cloudformation:ap-northeast-1:123456789012:"
+            "stack/udemy4-c010-common-20260724/01234567-89ab-cdef-0123-456789abcdef"
+        )
+        stack_tags = [
+            {"Key": "WorkPackage", "Value": "c010-common-eks"},
+            {
+                "Key": "TemplateContract",
+                "Value": "udemy4-c010-common-eks-v2-20260724",
+            },
+            {"Key": "Purpose", "Value": "training"},
+            {"Key": "ManagedBy", "Value": "udemy4"},
+            {"Key": "Course", "Value": "C010"},
+        ]
+        eks_tags = {
+            "aws:cloudformation:stack-name": "udemy4-c010-common-20260724",
+            "aws:cloudformation:stack-id": stack_id,
+            "aws:cloudformation:logical-id": "EksCluster",
+            "WorkPackage": "c010-common-eks",
+            "TemplateContract": "udemy4-c010-common-eks-v2-20260724",
+            "Purpose": "training",
+            "ManagedBy": "udemy4",
+            "Course": "C010",
+        }
+        result = run_bash(
+            "sort() { echo 'external sort must not be called' >&2; return 99; }; "
+            "export -f sort; export LC_ALL=C.utf8; "
+            f"assert_exact_stack_tags {shlex.quote(json.dumps(stack_tags))}; "
+            f"assert_exact_eks_tags {shlex.quote(json.dumps(eks_tags))} "
+            f"{shlex.quote(stack_id)}"
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_runtime_endpoint_gate_rejects_cidr_drift_and_world_access(self) -> None:
         accepted = run_bash(
             "assert_runtime_endpoint_values true true 198.51.100.10/32 198.51.100.10/32"

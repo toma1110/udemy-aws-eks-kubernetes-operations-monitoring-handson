@@ -2,10 +2,10 @@
 # Sort key: UTF-8 repository-relative path bytes, ordinal ascending. Format: lowercase SHA-256, two spaces, path, LF.
 # Excludes: artifact-inventory.sha256 itself and __pycache__/**.
 # Recorded files: 39.
-56921db1273f27b18b41fa2e819ff690bfefa004344e506b5909c23f9f846497  labs/common-eks/README.md
+c9c800ee74f80505e111440bbb3df556fff3e006ac9fcb45d2431ab850e04e17  labs/common-eks/README.md
 01374ca095fe4e37875d21beca1a62e43b5c57598717f1f02231da481e899209  labs/common-eks/cleanup-guard.yaml
 8314f57dd4a5a763c3c5284d640b26f423bab785fef8bd968010fdd08be6fb71  labs/common-eks/fixtures/rollback-complete-stack.json
-bc4d2bbf5fca4d05118f86a0074c0d6baf9ad7977378cc33135c7418b732a9cf  labs/common-eks/scripts/common.sh
+9a210c3bdfd19107ba8d033e5250d624827ec6f3f57315b311c7de7df0a41873  labs/common-eks/scripts/common.sh
 a86b20a7835af2a7266c2b76beeac2642e1ec292d0048057b946e49a1e1b0c53  labs/common-eks/scripts/create.sh
 9a363dadec7d85a59b94bf0d7ab7b6d136d05334566e4988050c7eea8a6bea15  labs/common-eks/scripts/delete.sh
 56d9d2f942a1caafaf44fd97461f07566e4248033766231c1a6e70505b47d8c9  labs/common-eks/scripts/preflight.sh
@@ -13,7 +13,7 @@ a86b20a7835af2a7266c2b76beeac2642e1ec292d0048057b946e49a1e1b0c53  labs/common-ek
 710da06598e2d66c652733999008567b8a59a86126f3e654ed85bd8954317bf1  labs/common-eks/scripts/status.sh
 8dcdc51c3de6898b6bce49dfe53d7b9e645c0fb71417abdeda64417b1a3b2079  labs/common-eks/scripts/verify-cleanup.sh
 aecbf2ade094d746214100617033bb3199413d43a1a314399fe4cfa8d85d7dfd  labs/common-eks/template.yaml
-dca7d255a4ddf4b6ea77761efb6b8303a51adfc2c3aefc42a2ac359e5f65024d  labs/common-eks/tests/test_common_eks.py
+a0f20ae4bde0fcc7b31a2ebe7a2481b60001dda803f7ff395d313f625c3e796d  labs/common-eks/tests/test_common_eks.py
 b443d23e25805ab4ae652f14f7b6b09163e5db468a39c532fae564cb3de04f6b  labs/s5-pod-resource-first-response/README.md
 d13db5cd51345be0eb1434cdc5fdcb33906af74dc34b3f33d80c9a5973fafbb0  labs/s5-pod-resource-first-response/analyze.py
 73108918fc262109d487d0c02b57cc886d714002a2e7a08ab893191934e87e76  labs/s5-pod-resource-first-response/expected-results.json

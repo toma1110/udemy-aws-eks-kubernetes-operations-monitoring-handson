@@ -43,7 +43,7 @@ AWS公式ドキュメントでは、クラスター削除前にService、Ingress
 
 一般の演習や既存resourceに対する一括削除scriptは、誤削除を避けるため提供しません。自分が作成したresource名を確認してから、AWS公式ドキュメントの手順に沿って削除してください。
 
-限定例外として、Section 5のlive routeには[共通EKS基盤](../labs/common-eks/README.md)の`scripts/delete.sh`があります。このscriptはSectionの`scripts/cleanup-section.sh`でexact namespaceの不存在を確認した後に使い、作成時と同じexact account、Region、固定stack/cluster、ownership tagを再照合して、Section 5の短命な学習用stackだけを削除します。残存確認が完了するまで外部cleanup guardを保持し、既存クラスターやSection 5以外のresourceを一括削除しません。
+限定された共通EKS routeとして、Section 4とSection 5は[共通EKS基盤](../labs/common-eks/README.md)の`scripts/delete.sh`を使います。先に実行したSection固有のcleanupを完了し、Section 4では`labs/s4-cloudwatch-logs-insights/scripts/cleanup-section.sh`でexact namespaceとlog group、Section 5では`labs/s5-pod-resource-first-response/scripts/cleanup-section.sh`でexact namespaceの不存在を確認します。その後にcommon `scripts/delete.sh`を実行すると、s4とs5両方の残存gate、作成時と同じexact account、Region、固定stack/cluster、ownership tagを再照合して、共通の短命な学習用stackだけを削除します。残存確認が完了するまで外部cleanup guardを保持し、既存クラスター、任意resource、Section固有cleanupを通っていないresourceを一括削除しません。
 
 ## 削除後の確認
 
