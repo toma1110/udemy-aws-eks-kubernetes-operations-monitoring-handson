@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: External deadline workflow for exact Section s4, common EKS, residual, then guard cleanup.
+Description: External deadline workflow for exact Sections s4 and s5, common EKS, residual, then guard cleanup.
 
 Parameters:
   AccountId:
@@ -47,7 +47,7 @@ Resources:
     DependsOn: CleanupHandlerLogGroup
     Properties:
       FunctionName: udemy4-c010-common-20260724-cleanup-handler
-      Description: Validates exact bindings and cleans Section s4 only through the private EKS endpoint.
+      Description: Validates exact bindings and cleans Sections s4 and s5 only through the private EKS endpoint.
       Runtime: python3.13
       Handler: index.handler
       MemorySize: 256
@@ -77,6 +77,7 @@ Resources:
           COMMON_STACK = "udemy4-c010-common-20260724"
           CLUSTER = COMMON_STACK
           NAMESPACE = "udemy4-s4-logs"
+          S5_NAMESPACE = "udemy4-c010-s5-20260724"
           JOB = "s4-log-generator"
           LOG_GROUP = "/udemy4/c010/s4/20260725"
           CONTRACT = "udemy4-c010-deadline-cleanup-v2"
@@ -88,6 +89,14 @@ Resources:
               "TemplateContract": "udemy4-c010-common-eks-v2-20260724",
           }
           SECTION_LABELS = {"course": "c010", "section": "s4", "managed-by": "udemy4"}
+          S5_SECTION_LABELS = {
+              "app.kubernetes.io/part-of": "udemy4-c010",
+              "app.kubernetes.io/managed-by": "udemy4",
+              "udemy4.example/course": "C010",
+              "udemy4.example/lab": "section-s5",
+              "udemy4.example/purpose": "training",
+              "kubernetes.io/metadata.name": S5_NAMESPACE,
+          }
           LOG_TAGS = {
               "Course": "C010",
               "Section": "s4",
@@ -155,6 +164,54 @@ Resources:
                   "subnet_ids": [outputs["PublicSubnetAId"], outputs["PublicSubnetBId"]],
                   "security_group_ids": [outputs["CleanupSecurityGroupId"]],
               }
+
+          def classify_common_stack(stack):
+              stack_id = stack.get("StackId", "")
+              prefix = "arn:aws:cloudformation:%s:%s:stack/%s/" % (REGION, ACCOUNT, COMMON_STACK)
+              if (
+                  stack.get("StackName") != COMMON_STACK
+                  or not stack_id.startswith(prefix)
+                  or exact_dict(stack.get("Tags", []), "Key", "Value") != COMMON_TAGS
+              ):
+                  fail("Common stack pending identity or ownership mismatch.")
+              parameters = exact_dict(
+                  stack.get("Parameters", []), "ParameterKey", "ParameterValue"
+              )
+              if set(parameters) != {
+                  "ApiPublicAccessCidr",
+                  "AvailabilityZoneA",
+                  "AvailabilityZoneB",
+                  *FIXED_PARAMETERS,
+              }:
+                  fail("Common stack pending parameter set mismatch.")
+              if any(parameters[key] != value for key, value in FIXED_PARAMETERS.items()):
+                  fail("Common stack pending fixed parameter binding mismatch.")
+              try:
+                  cidr = ipaddress.ip_network(
+                      parameters["ApiPublicAccessCidr"], strict=False
+                  )
+              except ValueError:
+                  fail("Common stack pending CIDR parameter mismatch.")
+              if cidr.version != 4 or str(cidr) == "0.0.0.0/0":
+                  fail("Common stack pending CIDR parameter mismatch.")
+              az_a = parameters["AvailabilityZoneA"]
+              az_b = parameters["AvailabilityZoneB"]
+              if (
+                  az_a == az_b
+                  or not az_a.startswith(REGION)
+                  or not az_b.startswith(REGION)
+              ):
+                  fail("Common stack pending AZ parameter mismatch.")
+              status = stack.get("StackStatus")
+              if status in {
+                  "CREATE_IN_PROGRESS",
+                  "UPDATE_IN_PROGRESS",
+                  "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
+              }:
+                  return {"status": "pending", "stack_id": stack_id}
+              if status in {"CREATE_COMPLETE", "UPDATE_COMPLETE", "ROLLBACK_COMPLETE"}:
+                  return {"status": "terminal", "stack_id": stack_id}
+              fail("Common stack reached an unsupported creation status.")
 
           def validate_failed_stack(stack):
               stack_id = stack.get("StackId", "")
@@ -288,22 +345,39 @@ Resources:
               if obj.get("metadata", {}).get("labels", {}) != expected:
                   fail("%s exact ownership labels mismatch." % kind)
 
+          def assert_s5_labels(obj):
+              metadata = obj.get("metadata", {})
+              if (
+                  metadata.get("name") != S5_NAMESPACE
+                  or metadata.get("labels", {}) != S5_SECTION_LABELS
+              ):
+                  fail("Section s5 Namespace exact ownership labels mismatch.")
+
           def cleanup_section(event):
               job_path = "/apis/batch/v1/namespaces/%s/jobs/%s" % (NAMESPACE, JOB)
               namespace_path = "/api/v1/namespaces/%s" % NAMESPACE
-              job = kube(event, "GET", job_path)
-              if job is not None:
-                  assert_labels(job, "Job")
-                  kube(event, "DELETE", job_path)
               namespace = kube(event, "GET", namespace_path)
               if namespace is not None:
                   assert_labels(namespace, "Namespace")
+                  job = kube(event, "GET", job_path)
+                  if job is not None:
+                      assert_labels(job, "Job")
+                      kube(event, "DELETE", job_path)
                   kube(event, "DELETE", namespace_path)
-              if kube(event, "GET", job_path) is not None:
-                  return {"status": "pending"}
               if kube(event, "GET", namespace_path) is not None:
                   return {"status": "pending"}
-              return {"status": "ready", "section_gate": CONTRACT + ":kubernetes-absent"}
+              s5_namespace_path = "/api/v1/namespaces/%s" % S5_NAMESPACE
+              s5_namespace = kube(event, "GET", s5_namespace_path)
+              if s5_namespace is not None:
+                  assert_s5_labels(s5_namespace)
+                  kube(event, "DELETE", s5_namespace_path)
+              if kube(event, "GET", s5_namespace_path) is not None:
+                  return {"status": "pending"}
+              return {
+                  "status": "ready",
+                  "section_gate": CONTRACT + ":kubernetes-absent",
+                  "s5_gate": CONTRACT + ":s5-kubernetes-absent",
+              }
 
           def validate_log_lookup(event):
               exact = [
@@ -324,6 +398,8 @@ Resources:
               action = event.get("action")
               if action == "validate_common":
                   return validate_common(event)
+              if action == "classify_common_stack":
+                  return classify_common_stack(event["stack"])
               if action == "validate_stack":
                   return {"status": "ready", **validate_stack(event["stack"])}
               if action == "validate_failed_stack":
@@ -394,6 +470,7 @@ Resources:
       RoleArn: !GetAtt CleanupStateMachineRole.Arn
       DefinitionString: !Sub |
         {
+          "TimeoutSeconds": 21600,
           "StartAt": "DescribeCommon",
           "States": {
             "DescribeCommon": {
@@ -402,11 +479,44 @@ Resources:
               "Parameters": {"StackName": "udemy4-c010-common-20260724"},
               "ResultPath": "$.common",
               "Catch": [{
-                "ErrorEquals": ["CloudFormation.ValidationErrorException"],
+                "ErrorEquals": ["CloudFormation.ValidationError"],
                 "ResultPath": "$.common_error",
                 "Next": "DescribeClusterWithoutStack"
               }],
-              "Next": "DescribeCluster"
+              "Next": "ClassifyCommonStack"
+            },
+            "ClassifyCommonStack": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "Payload": {
+                  "action": "classify_common_stack",
+                  "contract": "udemy4-c010-deadline-cleanup-v2",
+                  "stack.$": "$.common.Stacks[0]"
+                }
+              },
+              "ResultPath": "$.stack_classification",
+              "Next": "CommonStackTerminal"
+            },
+            "CommonStackTerminal": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.stack_classification.Payload.status",
+                "StringEquals": "terminal",
+                "Next": "DescribeCluster"
+              }, {
+                "Variable": "$.stack_classification.Payload.status",
+                "StringEquals": "pending",
+                "Next": "WaitForCommonTerminal"
+              }],
+              "Default": "UnsupportedCommonStatus"
+            },
+            "WaitForCommonTerminal": {"Type": "Wait", "Seconds": 30, "Next": "DescribeCommon"},
+            "UnsupportedCommonStatus": {
+              "Type": "Fail",
+              "Error": "UnsupportedCommonStatus",
+              "Cause": "The exact common stack did not classify as pending or supported terminal."
             },
             "DescribeCluster": {
               "Type": "Task",
@@ -581,7 +691,8 @@ Resources:
               "Result": {
                 "Payload": {
                   "status": "ready",
-                  "section_gate": "udemy4-c010-deadline-cleanup-v2:kubernetes-absent"
+                  "section_gate": "udemy4-c010-deadline-cleanup-v2:kubernetes-absent",
+                  "s5_gate": "udemy4-c010-deadline-cleanup-v2:s5-kubernetes-absent"
                 }
               },
               "ResultPath": "$.section",
@@ -655,8 +766,16 @@ Resources:
             "SectionGateReady": {
               "Type": "Choice",
               "Choices": [{
-                "Variable": "$.section.Payload.section_gate",
-                "StringEquals": "udemy4-c010-deadline-cleanup-v2:kubernetes-absent",
+                "And": [
+                  {
+                    "Variable": "$.section.Payload.section_gate",
+                    "StringEquals": "udemy4-c010-deadline-cleanup-v2:kubernetes-absent"
+                  },
+                  {
+                    "Variable": "$.section.Payload.s5_gate",
+                    "StringEquals": "udemy4-c010-deadline-cleanup-v2:s5-kubernetes-absent"
+                  }
+                ],
                 "Next": "CommonStackKnown"
               }],
               "Default": "MissingSectionGate"
@@ -681,7 +800,7 @@ Resources:
               "Parameters": {"StackName.$": "$.validation.Payload.stack_id"},
               "ResultPath": "$.common_delete",
               "Catch": [{
-                "ErrorEquals": ["CloudFormation.ValidationErrorException"],
+                "ErrorEquals": ["CloudFormation.ValidationError"],
                 "ResultPath": "$.common_already_absent",
                 "Next": "VerifyInstances"
               }],
@@ -694,7 +813,7 @@ Resources:
               "Parameters": {"StackName.$": "$.validation.Payload.stack_id"},
               "ResultPath": "$.common_poll",
               "Catch": [{
-                "ErrorEquals": ["CloudFormation.ValidationErrorException"],
+                "ErrorEquals": ["CloudFormation.ValidationError"],
                 "ResultPath": "$.common_absent",
                 "Next": "VerifyInstances"
               }],
@@ -860,7 +979,7 @@ Resources:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: udemy4-c010-common-20260724-guard-schedule
-      Description: Starts exact Section s4, common EKS, residual, then guard cleanup at the deadline.
+      Description: Starts exact Sections s4 and s5, common EKS, residual, then guard cleanup at the deadline.
       ScheduleExpression: !Ref CleanupScheduleExpression
       ScheduleExpressionTimezone: UTC
       FlexibleTimeWindow: {Mode: "OFF"}

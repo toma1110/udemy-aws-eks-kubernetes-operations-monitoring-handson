@@ -153,6 +153,7 @@ class CommonEksContractTests(unittest.TestCase):
         definition = json.loads(
             resources["CleanupStateMachine"]["Properties"]["DefinitionString"]
         )
+        self.assertEqual(21600, definition["TimeoutSeconds"])
         states = definition["States"]
         exact_log_group_arn = (
             "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:"
@@ -198,10 +199,50 @@ class CommonEksContractTests(unittest.TestCase):
             for target in targets:
                 self.assertIn(target, states)
         self.assertEqual("MissingSectionGate", states["MissingSectionGate"]["Error"])
-        self.assertEqual("DeleteCommon", states["CommonStackKnown"]["Choices"][0]["Next"])
+        self.assertEqual("ClassifyCommonStack", states["DescribeCommon"]["Next"])
         self.assertEqual(
-            "udemy4-c010-deadline-cleanup-v2:kubernetes-absent",
-            states["SectionGateReady"]["Choices"][0]["StringEquals"],
+            "classify_common_stack",
+            states["ClassifyCommonStack"]["Parameters"]["Payload"]["action"],
+        )
+        classification = states["CommonStackTerminal"]["Choices"]
+        self.assertEqual(
+            {
+                ("terminal", "DescribeCluster"),
+                ("pending", "WaitForCommonTerminal"),
+            },
+            {
+                (choice["StringEquals"], choice["Next"])
+                for choice in classification
+            },
+        )
+        self.assertEqual(
+            "DescribeCommon",
+            states["WaitForCommonTerminal"]["Next"],
+        )
+        self.assertEqual(
+            "UnsupportedCommonStatus",
+            states["CommonStackTerminal"]["Default"],
+        )
+        self.assertEqual("DeleteCommon", states["CommonStackKnown"]["Choices"][0]["Next"])
+        section_gate = states["SectionGateReady"]["Choices"][0]["And"]
+        self.assertEqual(
+            {
+                "$.section.Payload.section_gate",
+                "$.section.Payload.s5_gate",
+            },
+            {condition["Variable"] for condition in section_gate},
+        )
+        self.assertEqual(
+            "udemy4-c010-deadline-cleanup-v2:s5-kubernetes-absent",
+            next(
+                condition["StringEquals"]
+                for condition in section_gate
+                if condition["Variable"] == "$.section.Payload.s5_gate"
+            ),
+        )
+        self.assertIn(
+            "udemy4-c010-s5-20260724",
+            resources["CleanupHandler"]["Properties"]["Code"]["ZipFile"],
         )
         self.assertEqual(
             "arn:${AWS::Partition}:states:::aws-sdk:cloudformation:deleteStack",
@@ -226,9 +267,14 @@ class CommonEksContractTests(unittest.TestCase):
         )
         for name in ("DescribeCommon", "DeleteCommon", "PollCommonDelete"):
             self.assertEqual(
-                ["CloudFormation.ValidationErrorException"],
+                ["CloudFormation.ValidationError"],
                 states[name]["Catch"][0]["ErrorEquals"],
             )
+        self.assertEqual(
+            3,
+            self.guard_text.count('"CloudFormation.ValidationError"'),
+        )
+        self.assertNotIn("CloudFormation.ValidationErrorException", self.guard_text)
         attach = states["AttachCleanupHandler"]["Parameters"]["VpcConfig"]
         self.assertEqual(
             "$.validation.Payload.subnet_ids",
@@ -272,6 +318,18 @@ class CommonEksContractTests(unittest.TestCase):
             }],
             namespace_role["rules"],
         )
+        s5_namespace_role = objects[
+            ("ClusterRole", "udemy4-c010-s5-cleanup-namespace")
+        ]
+        self.assertEqual(
+            [{
+                "apiGroups": [""],
+                "resources": ["namespaces"],
+                "resourceNames": ["udemy4-c010-s5-20260724"],
+                "verbs": ["get", "delete"],
+            }],
+            s5_namespace_role["rules"],
+        )
         for binding_kind, binding_name, role_kind, role_name in (
             ("RoleBinding", "udemy4-s4-cleanup-job", "Role", "udemy4-s4-cleanup-job"),
             (
@@ -279,6 +337,12 @@ class CommonEksContractTests(unittest.TestCase):
                 "udemy4-c010-s4-cleanup-namespace",
                 "ClusterRole",
                 "udemy4-c010-s4-cleanup-namespace",
+            ),
+            (
+                "ClusterRoleBinding",
+                "udemy4-c010-s5-cleanup-namespace",
+                "ClusterRole",
+                "udemy4-c010-s5-cleanup-namespace",
             ),
         ):
             binding = objects[(binding_kind, binding_name)]
@@ -292,6 +356,30 @@ class CommonEksContractTests(unittest.TestCase):
             )
             self.assertEqual(role_kind, binding["roleRef"]["kind"])
             self.assertEqual(role_name, binding["roleRef"]["name"])
+
+        cluster_rbac = yaml.safe_load(
+            self.template["Outputs"]["ClusterCleanupRbacManifest"]["Value"]
+        )
+        self.assertEqual("List", cluster_rbac["kind"])
+        self.assertEqual(
+            {
+                ("ClusterRole", "udemy4-c010-s4-cleanup-namespace"),
+                ("ClusterRoleBinding", "udemy4-c010-s4-cleanup-namespace"),
+                ("ClusterRole", "udemy4-c010-s5-cleanup-namespace"),
+                ("ClusterRoleBinding", "udemy4-c010-s5-cleanup-namespace"),
+            },
+            {
+                (item["kind"], item["metadata"]["name"])
+                for item in cluster_rbac["items"]
+            },
+        )
+        self.assertTrue(
+            all(
+                item["kind"] in {"ClusterRole", "ClusterRoleBinding"}
+                and "namespace" not in item["metadata"]
+                for item in cluster_rbac["items"]
+            )
+        )
         ingress = common_resources["CleanupHandlerEksIngress"]["Properties"]
         self.assertEqual(443, ingress["FromPort"])
         self.assertEqual("CleanupHandlerSecurityGroup", ingress["SourceSecurityGroupId"])
@@ -330,6 +418,30 @@ class CommonEksContractTests(unittest.TestCase):
                 self.rollback_fixture["Stacks"][0]
             )
             self.assertEqual("ready", failed["status"])
+            for pending in (
+                "CREATE_IN_PROGRESS",
+                "UPDATE_IN_PROGRESS",
+                "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
+            ):
+                creating = copy.deepcopy(self.rollback_fixture["Stacks"][0])
+                creating["StackStatus"] = pending
+                self.assertEqual(
+                    "pending",
+                    post_deadline["classify_common_stack"](creating)["status"],
+                )
+            for terminal in ("CREATE_COMPLETE", "UPDATE_COMPLETE", "ROLLBACK_COMPLETE"):
+                terminal_stack = copy.deepcopy(self.rollback_fixture["Stacks"][0])
+                terminal_stack["StackStatus"] = terminal
+                self.assertEqual(
+                    "terminal",
+                    post_deadline["classify_common_stack"](terminal_stack)["status"],
+                )
+            unsupported = copy.deepcopy(self.rollback_fixture["Stacks"][0])
+            unsupported["StackStatus"] = "CREATE_FAILED"
+            with self.assertRaisesRegex(
+                RuntimeError, "unsupported creation status"
+            ):
+                post_deadline["classify_common_stack"](unsupported)
             for mutation in ("status", "tag", "account", "name"):
                 rejected = copy.deepcopy(self.rollback_fixture["Stacks"][0])
                 if mutation == "status":
@@ -374,6 +486,148 @@ class CommonEksContractTests(unittest.TestCase):
                     },
                     "Namespace",
                 )
+            s5_labels = {
+                "app.kubernetes.io/part-of": "udemy4-c010",
+                "app.kubernetes.io/managed-by": "udemy4",
+                "udemy4.example/course": "C010",
+                "udemy4.example/lab": "section-s5",
+                "udemy4.example/purpose": "training",
+                "kubernetes.io/metadata.name": "udemy4-c010-s5-20260724",
+            }
+            post_deadline["assert_s5_labels"](
+                {
+                    "metadata": {
+                        "name": "udemy4-c010-s5-20260724",
+                        "labels": copy.deepcopy(s5_labels),
+                    }
+                }
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "Section s5 Namespace exact ownership labels mismatch"
+            ):
+                post_deadline["assert_s5_labels"](
+                    {
+                        "metadata": {
+                            "name": "udemy4-c010-s5-20260724",
+                            "labels": {**s5_labels, "unexpected": "reject"},
+                        }
+                    }
+                )
+            s5_path = "/api/v1/namespaces/udemy4-c010-s5-20260724"
+            calls = []
+            s5_present = {"value": True}
+
+            def fake_kube(event, method, path):
+                calls.append((method, path))
+                if path == s5_path and method == "GET" and s5_present["value"]:
+                    return {
+                        "metadata": {
+                            "name": "udemy4-c010-s5-20260724",
+                            "labels": copy.deepcopy(s5_labels),
+                        }
+                    }
+                if path == s5_path and method == "DELETE":
+                    s5_present["value"] = False
+                    return {}
+                return None
+
+            original_kube = post_deadline["kube"]
+            post_deadline["kube"] = fake_kube
+            cleanup_result = post_deadline["cleanup_section"]({})
+            post_deadline["kube"] = original_kube
+            self.assertEqual("ready", cleanup_result["status"])
+            self.assertEqual(
+                "udemy4-c010-deadline-cleanup-v2:s5-kubernetes-absent",
+                cleanup_result["s5_gate"],
+            )
+            self.assertIn(("DELETE", s5_path), calls)
+            job_path = (
+                "/apis/batch/v1/namespaces/udemy4-s4-logs/jobs/s4-log-generator"
+            )
+            self.assertFalse(
+                any(path == job_path for _, path in calls),
+                "An initially absent s4 namespace must cause zero Job endpoint calls.",
+            )
+
+            ordered_calls = []
+            s4_namespace_path = "/api/v1/namespaces/udemy4-s4-logs"
+            s4_present = {"value": True}
+
+            def present_s4_kube(event, method, path):
+                ordered_calls.append((method, path))
+                if path == s4_namespace_path and method == "GET":
+                    if s4_present["value"]:
+                        return {
+                            "metadata": {
+                                "labels": {
+                                    "course": "c010",
+                                    "section": "s4",
+                                    "managed-by": "udemy4",
+                                    "kubernetes.io/metadata.name": "udemy4-s4-logs",
+                                }
+                            }
+                        }
+                    return None
+                if path == job_path and method == "GET":
+                    return {
+                        "metadata": {
+                            "labels": {
+                                "course": "c010",
+                                "section": "s4",
+                                "managed-by": "udemy4",
+                            }
+                        }
+                    }
+                if path == s4_namespace_path and method == "DELETE":
+                    s4_present["value"] = False
+                return None
+
+            post_deadline["kube"] = present_s4_kube
+            self.assertEqual(
+                "ready",
+                post_deadline["cleanup_section"]({})["status"],
+            )
+            post_deadline["kube"] = original_kube
+            namespace_delete_index = ordered_calls.index(
+                ("DELETE", s4_namespace_path)
+            )
+            self.assertEqual(
+                [
+                    ("GET", s4_namespace_path),
+                    ("GET", job_path),
+                    ("DELETE", job_path),
+                    ("DELETE", s4_namespace_path),
+                    ("GET", s4_namespace_path),
+                ],
+                ordered_calls[: namespace_delete_index + 2],
+            )
+            self.assertFalse(
+                any(
+                    path == job_path
+                    for _, path in ordered_calls[namespace_delete_index + 1 :]
+                ),
+                "After namespace absence is established, no Job endpoint may be called.",
+            )
+            bad_calls = []
+
+            def mismatched_s5_kube(event, method, path):
+                bad_calls.append((method, path))
+                if path == s5_path and method == "GET":
+                    return {
+                        "metadata": {
+                            "name": "udemy4-c010-s5-20260724",
+                            "labels": {**s5_labels, "unexpected": "reject"},
+                        }
+                    }
+                return None
+
+            post_deadline["kube"] = mismatched_s5_kube
+            with self.assertRaisesRegex(
+                RuntimeError, "Section s5 Namespace exact ownership labels mismatch"
+            ):
+                post_deadline["cleanup_section"]({})
+            post_deadline["kube"] = original_kube
+            self.assertNotIn(("DELETE", s5_path), bad_calls)
             with self.assertRaisesRegex(RuntimeError, "direct-delete"):
                 post_deadline["handler"](
                     {
@@ -511,6 +765,118 @@ class CommonEksContractTests(unittest.TestCase):
         ):
             self.assertIn(token, common)
 
+    def test_create_applies_and_reads_back_exact_cluster_cleanup_rbac(self):
+        create = self.scripts["create.sh"]
+        self.assertLess(
+            create.index("assert_exact_kubernetes_context"),
+            create.index("apply_exact_cluster_cleanup_rbac"),
+        )
+        self.assertLess(
+            create.index("apply_exact_cluster_cleanup_rbac"),
+            create.index("kubectl wait"),
+        )
+        common = self.scripts["common.sh"]
+        for token in (
+            "ClusterCleanupRbacManifest",
+            'printf \'%s\\n\' "$CLUSTER_CLEANUP_RBAC_MANIFEST" | kubectl apply -f -',
+            'kubectl get clusterrole "$name" -o json',
+            'kubectl get clusterrolebinding "$name" -o json',
+            '"resourceNames": [$namespace]',
+            '"name": "udemy4:c010:s4-cleanup"',
+        ):
+            self.assertIn(token, common)
+
+        role_json = json.dumps(
+            {
+                "kind": "ClusterRole",
+                "metadata": {
+                    "name": "placeholder",
+                    "labels": {
+                        "course": "c010",
+                        "managed-by": "udemy4",
+                        "section": "placeholder",
+                    },
+                },
+                "rules": [
+                    {
+                        "apiGroups": [""],
+                        "resourceNames": ["placeholder"],
+                        "resources": ["namespaces"],
+                        "verbs": ["get", "delete"],
+                    }
+                ],
+            },
+            separators=(",", ":"),
+        )
+        binding_json = json.dumps(
+            {
+                "kind": "ClusterRoleBinding",
+                "metadata": {
+                    "name": "placeholder",
+                    "labels": {
+                        "course": "c010",
+                        "managed-by": "udemy4",
+                        "section": "placeholder",
+                    },
+                },
+                "roleRef": {
+                    "apiGroup": "rbac.authorization.k8s.io",
+                    "kind": "ClusterRole",
+                    "name": "placeholder",
+                },
+                "subjects": [
+                    {
+                        "apiGroup": "rbac.authorization.k8s.io",
+                        "kind": "Group",
+                        "name": "udemy4:c010:s4-cleanup",
+                    }
+                ],
+            },
+            separators=(",", ":"),
+        )
+        manifest = self.template["Outputs"]["ClusterCleanupRbacManifest"]["Value"]
+        result = run_bash(
+            "assert_exact_kubernetes_context(){ :; }; "
+            f"export CLUSTER_CLEANUP_RBAC_MANIFEST={shlex.quote(manifest)}; "
+            f"ROLE_FIXTURE={shlex.quote(role_json)}; "
+            f"BINDING_FIXTURE={shlex.quote(binding_json)}; "
+            "jq(){ "
+            "local name='' section='' namespace=''; "
+            "while (($#)); do "
+            "if [[ \"$1\" == --arg ]]; then "
+            "case \"$2\" in name) name=\"$3\";; section) section=\"$3\";; namespace) namespace=\"$3\";; esac; "
+            "shift 3; else shift; fi; done; "
+            "python3 -c 'import json,sys; d=json.load(sys.stdin); name,section,namespace=sys.argv[1:]; "
+            "assert d[\"metadata\"][\"name\"]==name; "
+            "assert d[\"metadata\"][\"labels\"]=={\"course\":\"c010\",\"managed-by\":\"udemy4\",\"section\":section}; "
+            "expected=([{\"apiGroups\":[\"\"],\"resourceNames\":[namespace],\"resources\":[\"namespaces\"],\"verbs\":[\"get\",\"delete\"]}] "
+            "if d[\"kind\"]==\"ClusterRole\" else None); "
+            "assert (d[\"rules\"]==expected if expected is not None else "
+            "(d[\"kind\"]==\"ClusterRoleBinding\" and d[\"roleRef\"]=={\"apiGroup\":\"rbac.authorization.k8s.io\",\"kind\":\"ClusterRole\",\"name\":name} "
+            "and d[\"subjects\"]==[{\"apiGroup\":\"rbac.authorization.k8s.io\",\"kind\":\"Group\",\"name\":\"udemy4:c010:s4-cleanup\"}]))' "
+            "\"$name\" \"$section\" \"$namespace\"; "
+            "}; "
+            "kubectl(){ "
+            "if [[ \"$1\" == apply ]]; then "
+            "payload=\"$(cat)\"; "
+            "[[ \"$payload\" != *$'kind: Namespace'* && \"$payload\" != *$'kind: Role\\n'* && \"$payload\" != *$'kind: RoleBinding\\n'* ]]; "
+            "return; "
+            "fi; "
+            "local kind=\"$2\" name=\"$3\" section namespace fixture; "
+            "if [[ \"$name\" == *s4* ]]; then section=s4; namespace=udemy4-s4-logs; "
+            "else section=s5; namespace=udemy4-c010-s5-20260724; fi; "
+            "if [[ \"$kind\" == clusterrole ]]; then fixture=\"$ROLE_FIXTURE\"; "
+            "else fixture=\"$BINDING_FIXTURE\"; fi; "
+            "python3 -c 'import json,sys; d=json.loads(sys.argv[1]); name,section,namespace=sys.argv[2:]; "
+            "d[\"metadata\"][\"name\"]=name; d[\"metadata\"][\"labels\"][\"section\"]=section; "
+            "(d[\"rules\"][0].update(resourceNames=[namespace]) if d[\"kind\"]==\"ClusterRole\" else d[\"roleRef\"].update(name=name)); "
+            "print(json.dumps(d,separators=(\",\",\":\")))' "
+            "\"$fixture\" \"$name\" \"$section\" \"$namespace\"; "
+            "}; "
+            "apply_exact_cluster_cleanup_rbac"
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_cloudshell_cidr_recovery_is_exact_and_non_adopting(self):
         recovery = self.scripts["recover-cidr.sh"]
         for token in (
@@ -624,13 +990,22 @@ class CommonEksContractTests(unittest.TestCase):
         delete = self.scripts["delete.sh"]
         for token in (
             "kubectl get namespace udemy4-s4-logs",
-            "kubectl get job s4-log-generator -n udemy4-s4-logs",
             'select(.logGroupName == "/udemy4/c010/s4/20260725")',
             "SECTION_S4_CLEANUP_GATE_PASSED",
+            "kubectl get namespace udemy4-c010-s5-20260724",
+            "SECTION_S5_CLEANUP_GATE_PASSED",
         ):
             self.assertIn(token, common)
+        self.assertNotIn(
+            "kubectl get job s4-log-generator -n udemy4-s4-logs",
+            common,
+        )
         self.assertLess(
             delete.index("assert_section_s4_residuals_absent"),
+            delete.index("cloudformation delete-stack"),
+        )
+        self.assertLess(
+            delete.index("assert_section_s5_residuals_absent"),
             delete.index("cloudformation delete-stack"),
         )
         self.assertLess(
@@ -650,6 +1025,41 @@ class CommonEksContractTests(unittest.TestCase):
             "if require_section_s4_cleanup_gate; then exit 21; fi; "
             "SECTION_S4_CLEANUP_GATE_PASSED=$expected; "
             "require_section_s4_cleanup_gate"
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_s5_cleanup_gate_rejects_remaining_namespace_and_binds_not_found(self):
+        remains = run_bash(
+            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "assert_exact_kubernetes_context() { :; }; "
+            "kubectl() { printf 'namespace/udemy4-c010-s5-20260724\\n'; }; "
+            "assert_section_s5_residuals_absent"
+        )
+        self.assertNotEqual(0, remains.returncode)
+        self.assertIn("Section s5 namespace remains", remains.stderr)
+
+        absent = run_bash(
+            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "assert_exact_kubernetes_context() { :; }; "
+            "kubectl() { printf 'Error from server (NotFound)\\n' >&2; return 1; }; "
+            "assert_section_s5_residuals_absent; "
+            "require_section_s5_cleanup_gate"
+        )
+        self.assertEqual(0, absent.returncode, absent.stderr)
+
+    def test_common_cleanup_requires_both_s4_and_s5_gates(self):
+        common = self.scripts["common.sh"]
+        self.assertLess(
+            common.index("require_section_s4_cleanup_gate", common.index("require_common_cleanup_gate")),
+            common.index("require_section_s5_cleanup_gate", common.index("require_common_cleanup_gate")),
+        )
+        result = run_bash(
+            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "SECTION_S4_CLEANUP_GATE_PASSED=\"$(section_s4_cleanup_gate_binding)\"; "
+            "unset SECTION_S5_CLEANUP_GATE_PASSED; "
+            "if require_common_cleanup_gate; then exit 31; fi; "
+            "SECTION_S5_CLEANUP_GATE_PASSED=\"$(section_s5_cleanup_gate_binding)\"; "
+            "require_common_cleanup_gate"
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
@@ -702,6 +1112,7 @@ class CommonEksContractTests(unittest.TestCase):
         )
 
     def test_canonical_inventory_is_byte_ordinal_and_exact(self):
+        repository = ROOT.parents[1]
         inventory_path = ROOT / "artifact-inventory.sha256"
         records = [
             line
@@ -711,16 +1122,23 @@ class CommonEksContractTests(unittest.TestCase):
         paths = [record.split("  ", 1)[1] for record in records]
         self.assertEqual(paths, sorted(paths, key=lambda value: value.encode("utf-8")))
         discovered = []
-        for path in ROOT.rglob("*"):
-            if not path.is_file():
-                continue
-            if path == inventory_path or "__pycache__" in path.parts:
-                continue
-            discovered.append(path.relative_to(ROOT).as_posix())
+        for package in (ROOT, ROOT.parent / "s5-pod-resource-first-response"):
+            for path in package.rglob("*"):
+                relative = path.relative_to(repository).as_posix()
+                if not path.is_file():
+                    continue
+                if (
+                    path == inventory_path
+                    or "__pycache__" in path.parts
+                ):
+                    continue
+                if path.name.startswith("public-repository-preparation-"):
+                    continue
+                discovered.append(relative)
         self.assertEqual(paths, sorted(discovered, key=lambda value: value.encode("utf-8")))
         for record in records:
             expected_hash, relative = record.split("  ", 1)
-            actual_hash = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+            actual_hash = hashlib.sha256((repository / relative).read_bytes()).hexdigest()
             self.assertEqual(expected_hash, actual_hash, relative)
 
 

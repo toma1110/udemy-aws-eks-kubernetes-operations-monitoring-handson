@@ -1,14 +1,8 @@
 # Section 5: Pending / CrashLoopBackOffの初動切り分け
 
-このhands-onの主系統は、`../common-eks/`で作成した短命なEKS基盤に、Section専用namespaceと安全に制限した障害Podを配置して調査することです。固定fixtureはAWSを使えない場合の回帰fallbackであり、実環境の証拠ではありません。
+このhands-onの主系統は、`../common-eks/`で作成した短命なEKS基盤に、Section専用namespaceと安全に制限した障害Podを配置して調査することです。受講者向け既定環境は、AWS Management Consoleで東京Region `ap-northeast-1`を選択して開くAWS CloudShellのBashです。固定fixtureはAWSを使えない場合の回帰fallbackであり、実環境の証拠ではありません。
 
 対象lectureは`s5-l3`と`s5-l4`です。Regionは`ap-northeast-1`、cluster/stackは`udemy4-c010-common-20260724`、Section resource prefixは`udemy4-c010-s5-20260724`、namespaceは`udemy4-c010-s5-20260724`です。
-
-public repositoryのrootから、最初にこのdirectoryへ移動します。
-
-```powershell
-cd labs/s5-pod-resource-first-response
-```
 
 ## 目的
 
@@ -29,29 +23,45 @@ cd labs/s5-pod-resource-first-response
 
 `../common-eks/README.md`のpreflight、作成、status確認を先に完了します。`API_PUBLIC_ACCESS_CIDR`には自分のexact CIDRを設定し、`0.0.0.0/0`を使いません。
 
-```powershell
+CloudShellのBashで、事前認証identity、tool version、Regionごとに1 GB用意される`$HOME`永続領域と空き容量を先に確認します。`aws sts get-caller-identity`のaccountが承認済みaccountと違う場合は停止します。
+
+```bash
+export AWS_REGION="ap-northeast-1"
+export AWS_DEFAULT_REGION="ap-northeast-1"
+aws --version
+kubectl version --client --output=json
+aws sts get-caller-identity --region "$AWS_REGION" --no-cli-pager
+printf 'HOME=%s\n' "$HOME"
+df -h "$HOME"
+
 cd ../common-eks
-$env:AWS_ACCOUNT_ID = "<exact-12-digit-account-id>"
-$env:API_PUBLIC_ACCESS_CIDR = "<trusted-public-ip>/32"
-$env:AVAILABILITY_ZONE_A = "ap-northeast-1a"
-$env:AVAILABILITY_ZONE_B = "ap-northeast-1c"
-$env:CLEANUP_DEADLINE_UTC = [DateTimeOffset]::UtcNow.AddHours(4).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
-./scripts/preflight.ps1
-./scripts/create.ps1
-./scripts/status.ps1
+export COMMON_EKS_DIR="$(pwd)"
+export AWS_ACCOUNT_ID="<exact-12-digit-account-id>"
+export API_PUBLIC_ACCESS_CIDR="<current-cloudshell-public-ip>/32"
+export AVAILABILITY_ZONE_A="ap-northeast-1a"
+export AVAILABILITY_ZONE_B="ap-northeast-1c"
+export CLEANUP_DEADLINE_UTC="$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%M:%SZ')"
+chmod +x "$COMMON_EKS_DIR"/scripts/*.sh
+"$COMMON_EKS_DIR/scripts/preflight.sh"
+"$COMMON_EKS_DIR/scripts/create.sh"
+"$COMMON_EKS_DIR/scripts/status.sh"
 cd ../s5-pod-resource-first-response
+export S5_DIR="$(pwd)"
+chmod +x "$S5_DIR"/scripts/*.sh
+export EVIDENCE_DIR="$HOME/udemy4-c010-s5-20260724-evidence"
+mkdir -p -- "$EVIDENCE_DIR"
 ```
 
 期待結果: clusterが`ACTIVE`、1台の`t3.medium` nodeが`Ready`です。
 
-`AWS_ACCOUNT_ID`はs5のapply/capture/cleanupでも必須です。各scriptはSTS account、固定Region、stack ARN/tag/output、EKS cluster ARN/tagを再照合し、現在contextがexact cluster ARNと完全一致しなければ停止します。自動cleanup scheduleが期限にstackを削除するため、期限後にSection scriptを実行できないのは期待されるfail-closed動作です。
+`AWS_ACCOUNT_ID`はs5のapply/capture/cleanupでも必須です。各scriptはSTS account、固定Region、stack ARN/tag/output、EKS cluster ARN/tagを再照合し、現在contextがexact cluster ARNと完全一致しなければ停止します。自動cleanup scheduleは期限にexact s4 resourceと、canonical labelが完全一致するexact s5 namespaceを削除・不存在確認してからcommon stackを削除します。期限後にSection scriptを実行できないのは期待されるfail-closed動作です。
 
 ## 2. Section scenarioを作る
 
 scriptは現在contextがexact cluster名を含むことを確認してから、固定manifestを順番にapplyします。
 
-```powershell
-./scripts/apply-scenarios.ps1
+```bash
+"$S5_DIR/scripts/apply-scenarios.sh"
 kubectl get pods -n udemy4-c010-s5-20260724 -o wide
 ```
 
@@ -65,15 +75,16 @@ image pullやbackoff timingにより一時状態は異なります。状態が�
 
 ## 3. read-onlyで調査して証拠を保存する
 
-次のscriptは`get`、`describe`、`logs`だけを使い、`$env:TEMP/udemy4-c010-s5-20260724-evidence`へ保存します。Kubernetes Secret、AWS account ID、credentialは取得しません。
+次のscriptは`get`、`describe`、`logs`だけを使い、CloudShellの`$HOME/udemy4-c010-s5-20260724-evidence`へ保存します。Kubernetes Secret、AWS account ID、credentialは取得しません。容量は実行前後に`df -h "$HOME"`で確認し、不要になったevidenceは回収後に削除します。
 
-```powershell
-./scripts/capture-evidence.ps1
+```bash
+"$S5_DIR/scripts/capture-evidence.sh"
+df -h "$HOME"
 ```
 
 scriptと同じread-only commandは次です。
 
-```powershell
+```bash
 kubectl get pods -n udemy4-c010-s5-20260724 -o wide
 kubectl get events -n udemy4-c010-s5-20260724 --sort-by=.lastTimestamp
 kubectl describe pod udemy4-c010-s5-20260724-pending-capacity -n udemy4-c010-s5-20260724
@@ -91,17 +102,16 @@ Pendingでは8 GiB requestとNode allocatable、同じPodの`FailedScheduling`�
 
 共通stackより先に、固定namespaceだけを削除します。
 
-```powershell
-./scripts/cleanup-section.ps1
+```bash
+"$S5_DIR/scripts/cleanup-section.sh"
 ```
 
 scriptがnamespaceの消失を確認できない場合、共通基盤の削除へ進みません。
 
 ## 5. 共通cleanup
 
-```powershell
-cd ../common-eks
-./scripts/delete.ps1
+```bash
+"$COMMON_EKS_DIR/scripts/delete.sh"
 ```
 
 stack、cluster、exact tag付きEC2/EBS/ENI、cluster prefixのCloudWatch log groupが残ればscriptは失敗し、外部guardを保持します。全query成功かつ残存なしの場合だけexact guard stackを削除し、guard stack/schedule/roleの消失まで確認します。wildcard deleteは行いません。
@@ -114,12 +124,12 @@ Section manifest自体は追加のLoad Balancer、NAT Gateway、EBS、CloudWatch
 
 AWSを使えない場合だけ、fixture analyzerで調査順序を練習できます。
 
-```powershell
-python -B analyze.py --check
-python -B -m unittest discover -s tests -v
+```bash
+python3 -B analyze.py --check
+python3 -B -m unittest discover -s tests -v
 ```
 
-Pythonがbytecode cacheを作らない隔離環境では、同じ検査を`python analyze.py --check`として実行しても結果は同じです。
+Pythonがbytecode cacheを作らない隔離環境では、同じ検査を`python3 analyze.py --check`として実行しても結果は同じです。
 
 fixtureは合成データであり、EKSの作成、Pod状態、AWS Console、CloudWatch、IAM、networkのlive動作を証明しません。
 
@@ -127,7 +137,7 @@ fixtureは合成データであり、EKSの作成、Pod状態、AWS Console、Cl
 
 共通基盤を作成できないが、調査を許可された既存clusterがある場合の任意routeです。権限やデータがないことは演習の失敗ではありません。その場合は`Route B: fixtureで決定的に調べる`へ進みます。targetを確定してから次のplaceholderを置き換えます。
 
-```powershell
+```bash
 kubectl config current-context
 kubectl config get-contexts
 kubectl --context <context> get pods -n <namespace> -o wide
@@ -145,7 +155,7 @@ IAMとKubernetes RBACの両方を既に持つ対象だけを読みます。権�
 
 ### Route B: fixtureで決定的に調べる
 
-前述の`python -B analyze.py --check`を実行します。
+前述の`python3 -B analyze.py --check`を実行します。
 
 ## Troubleshooting
 

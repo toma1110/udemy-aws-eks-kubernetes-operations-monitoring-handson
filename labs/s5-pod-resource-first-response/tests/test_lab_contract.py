@@ -56,30 +56,76 @@ class DeployableLabTests(unittest.TestCase):
         self.assertEqual(limits, ["32Mi", "24Mi"])
 
     def test_read_only_capture_and_exact_cleanup(self):
-        capture = (PACKAGE / "scripts" / "capture-evidence.ps1").read_text(encoding="utf-8")
-        for token in ('@("get",', '@("describe",', '@("logs",'):
+        capture = (PACKAGE / "scripts" / "capture-evidence.sh").read_text(encoding="utf-8")
+        for token in ("kubectl get ", "kubectl describe ", "kubectl logs "):
             self.assertIn(token, capture)
-        for token in ("kubectl apply ", "kubectl delete ", "kubectl patch ", "kubectl exec ", "Invoke-NativeResult"):
+        for token in ("kubectl apply ", "kubectl delete ", "kubectl patch ", "kubectl exec "):
             self.assertNotIn(token, capture)
-        cleanup = (PACKAGE / "scripts" / "cleanup-section.ps1").read_text(encoding="utf-8")
-        self.assertIn('@("delete", "namespace", $Namespace', cleanup)
-        self.assertIn('if ($result.Output -notmatch "NotFound")', cleanup)
+        cleanup = (PACKAGE / "scripts" / "cleanup-section.sh").read_text(encoding="utf-8")
+        self.assertIn('kubectl delete namespace "$NAMESPACE"', cleanup)
+        self.assertIn("grep -q 'NotFound'", cleanup)
         self.assertNotIn("--all", cleanup)
         self.assertNotIn("*", cleanup)
 
     def test_every_external_script_enforces_exact_target(self):
-        for name in ("apply-scenarios.ps1", "capture-evidence.ps1", "cleanup-section.ps1"):
+        for name in ("apply-scenarios.sh", "capture-evidence.sh", "cleanup-section.sh"):
             text = (PACKAGE / "scripts" / name).read_text(encoding="utf-8")
-            self.assertIn("Assert-S5Target", text)
-        common = (PACKAGE / "scripts" / "common.ps1").read_text(encoding="utf-8")
-        self.assertIn("Get-ExpectedStackBinding", common)
-        self.assertIn("Assert-ExactKubernetesContext", common)
+            self.assertIn("assert_s5_target", text)
+        common = (PACKAGE / "scripts" / "common.sh").read_text(encoding="utf-8")
+        self.assertIn("get_expected_stack_binding", common)
+        self.assertIn("assert_exact_kubernetes_context", common)
 
     def test_readme_orders_section_before_common_cleanup(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
-        self.assertLess(readme.index("./scripts/cleanup-section.ps1"), readme.index("./scripts/delete.ps1"))
+        self.assertLess(readme.index('scripts/cleanup-section.sh"'), readme.index('scripts/delete.sh"'))
         self.assertIn("fixtureは合成データ", readme)
         self.assertIn("実請求", readme)
+
+    def test_cloudshell_bash_is_the_only_learner_command_environment(self):
+        readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
+        for token in (
+            "AWS CloudShell",
+            "ap-northeast-1",
+            "aws --version",
+            "kubectl version --client",
+            "aws sts get-caller-identity",
+            'df -h "$HOME"',
+            "Regionごとに1 GB",
+        ):
+            self.assertIn(token, readme)
+        self.assertNotIn("```powershell", readme.lower())
+        self.assertNotIn(".ps1", readme.lower())
+        self.assertEqual(list((PACKAGE / "scripts").glob("*.ps1")), [])
+
+    def test_namespace_assertion_accepts_effective_manifest_labels_and_rejects_drift(self):
+        namespace = next(document for document in self.documents if document["kind"] == "Namespace")
+        effective_labels = {
+            **namespace["metadata"]["labels"],
+            "kubernetes.io/metadata.name": namespace["metadata"]["name"],
+        }
+        expected_labels = {
+            "app.kubernetes.io/part-of": "udemy4-c010",
+            "app.kubernetes.io/managed-by": "udemy4",
+            "udemy4.example/course": "C010",
+            "udemy4.example/lab": "section-s5",
+            "udemy4.example/purpose": "training",
+            "kubernetes.io/metadata.name": "udemy4-c010-s5-20260724",
+        }
+        self.assertEqual(expected_labels, effective_labels)
+        common = (PACKAGE / "scripts" / "common.sh").read_text(encoding="utf-8")
+        self.assertIn(".metadata.labels == {", common)
+        for key, value in expected_labels.items():
+            expected_source = (
+                f'"{key}": $namespace'
+                if key == "kubernetes.io/metadata.name"
+                else f'"{key}": "{value}"'
+            )
+            self.assertIn(expected_source, common)
+        self.assertNotEqual(expected_labels, {**effective_labels, "unexpected": "reject"})
+        self.assertNotEqual(
+            expected_labels,
+            {**effective_labels, "udemy4.example/lab": "section-other"},
+        )
 
 
 if __name__ == "__main__":

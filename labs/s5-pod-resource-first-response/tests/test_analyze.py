@@ -188,7 +188,7 @@ class AnalyzeTests(unittest.TestCase):
         self.assertIn("Route A: 既存EKSクラスタを読み取り専用で調べる", readme)
         self.assertIn("Route B: fixtureで決定的に調べる", readme)
         self.assertIn("権限やデータがないことは演習の失敗ではありません", readme)
-        self.assertIn("python analyze.py --check", readme)
+        self.assertIn("python3 analyze.py --check", readme)
 
     def test_live_route_requires_target_and_read_only_commands(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")

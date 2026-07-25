@@ -44,7 +44,7 @@ EKS、EC2、NAT Gateway、CloudWatch Logs、Container Insights、Load Balancer�
 
 `labs/common-eks/scripts/create.sh`、Section 4の`apply-workload.sh` / `publish-logs.sh` / `cleanup-section.sh`、Section 5のscenario/cleanup scriptは、明示された固定名の学習用リソースを作成・削除します。Section 4ではnamespace、Job、CloudWatch Logs log group、log streamが対象です。ほかの既存クラスター向け確認scriptとfixture routeは読み取り専用です。固定stackまたは固定Section resourceが既に存在する場合は更新や引き継ぎをせず停止します。
 
-Section 5のlive routeはPowerShell 7、AWS CLI v2、`kubectl`、承認済みAWS認証を前提にします。Pod imageは`busybox:1.36.1`と`python:3.12-alpine`へtag固定されています。EKS control plane versionはtemplateで固定せず、実行時に利用可能な標準サポート版が選ばれるため、作成直前にAWS公式情報と`kubectl`互換性を再確認してください。
+Section 5のlive routeは、AWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBash、AWS CLI `2.12.3`以上、cluster versionと同じか前後1 minor以内の`kubectl`、`jq`、Python 3、事前認証済みconsole identityを前提にします。local PowerShellは不要です。Pod imageは`busybox:1.36.1`と`python:3.12-alpine`へtag固定されています。EKS control plane versionはtemplateで固定せず、実行時に利用可能な標準サポート版が選ばれるため、作成直前にAWS公式情報と`kubectl`互換性を再確認してください。
 
 ## 公式ドキュメント
 

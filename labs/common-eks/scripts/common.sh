@@ -401,6 +401,11 @@ get_expected_stack_binding() {
   CLEANUP_RBAC_MANIFEST="$(
     jq -er '.Stacks[0].Outputs[] | select(.OutputKey == "CleanupRbacManifest") | .OutputValue | select(length > 0)' <<<"$stacks"
   )" || die "Stack CleanupRbacManifest output is empty."
+  [[ "$(jq -r '[.Stacks[0].Outputs[] | select(.OutputKey == "ClusterCleanupRbacManifest")] | length' <<<"$stacks")" == "1" ]] ||
+    die "Stack must expose exactly one ClusterCleanupRbacManifest output."
+  CLUSTER_CLEANUP_RBAC_MANIFEST="$(
+    jq -er '.Stacks[0].Outputs[] | select(.OutputKey == "ClusterCleanupRbacManifest") | .OutputValue | select(length > 0)' <<<"$stacks"
+  )" || die "Stack ClusterCleanupRbacManifest output is empty."
   [[ "$(jq -r '[.Stacks[0].Outputs[] | select(.OutputKey == "ApiPublicAccessCidr")] | length' <<<"$stacks")" == "1" ]] ||
     die "Stack must expose exactly one ApiPublicAccessCidr output."
   expected_cidr="$(jq -er '.Stacks[0].Outputs[] | select(.OutputKey == "ApiPublicAccessCidr") | .OutputValue' <<<"$stacks")"
@@ -423,7 +428,7 @@ get_expected_stack_binding() {
   assert_exact_eks_cluster_tags "$(jq -c '.cluster.tags' <<<"$cluster")" "$stack_id"
   STACK_ID="$stack_id"
   CLUSTER_ARN="$expected_arn"
-  export STACK_ID CLUSTER_ARN CLEANUP_RBAC_MANIFEST
+  export STACK_ID CLUSTER_ARN CLEANUP_RBAC_MANIFEST CLUSTER_CLEANUP_RBAC_MANIFEST
 }
 
 assert_exact_kubernetes_context() {
@@ -432,6 +437,68 @@ assert_exact_kubernetes_context() {
   actual="$(kubectl config current-context)"
   [[ "$actual" == "$expected" ]] ||
     die "Current kubectl context must equal the exact expected EKS cluster ARN."
+}
+
+assert_exact_cluster_cleanup_rbac() {
+  assert_exact_kubernetes_context
+  local name section namespace role binding
+  for entry in \
+    "udemy4-c010-s4-cleanup-namespace|s4|udemy4-s4-logs" \
+    "udemy4-c010-s5-cleanup-namespace|s5|udemy4-c010-s5-20260724"; do
+    IFS='|' read -r name section namespace <<<"$entry"
+    role="$(kubectl get clusterrole "$name" -o json)" ||
+      die "Could not read back exact cluster cleanup role $name."
+    jq -e \
+      --arg name "$name" --arg section "$section" --arg namespace "$namespace" '
+        .kind == "ClusterRole"
+        and .metadata.name == $name
+        and .metadata.labels == {
+          "course": "c010",
+          "managed-by": "udemy4",
+          "section": $section
+        }
+        and .rules == [{
+          "apiGroups": [""],
+          "resourceNames": [$namespace],
+          "resources": ["namespaces"],
+          "verbs": ["get", "delete"]
+        }]
+      ' <<<"$role" >/dev/null ||
+      die "Cluster cleanup role $name does not match the exact least-privilege contract."
+
+    binding="$(kubectl get clusterrolebinding "$name" -o json)" ||
+      die "Could not read back exact cluster cleanup binding $name."
+    jq -e \
+      --arg name "$name" --arg section "$section" '
+        .kind == "ClusterRoleBinding"
+        and .metadata.name == $name
+        and .metadata.labels == {
+          "course": "c010",
+          "managed-by": "udemy4",
+          "section": $section
+        }
+        and .roleRef == {
+          "apiGroup": "rbac.authorization.k8s.io",
+          "kind": "ClusterRole",
+          "name": $name
+        }
+        and .subjects == [{
+          "apiGroup": "rbac.authorization.k8s.io",
+          "kind": "Group",
+          "name": "udemy4:c010:s4-cleanup"
+        }]
+      ' <<<"$binding" >/dev/null ||
+      die "Cluster cleanup binding $name does not match the exact group and role contract."
+  done
+}
+
+apply_exact_cluster_cleanup_rbac() {
+  assert_exact_kubernetes_context
+  [[ -n "${CLUSTER_CLEANUP_RBAC_MANIFEST:-}" ]] ||
+    die "ClusterCleanupRbacManifest is required before applying cleanup RBAC."
+  printf '%s\n' "$CLUSTER_CLEANUP_RBAC_MANIFEST" | kubectl apply -f - >/dev/null ||
+    die "Could not apply exact cluster-scoped cleanup RBAC."
+  assert_exact_cluster_cleanup_rbac
 }
 
 section_s4_cleanup_gate_binding() {
@@ -449,6 +516,21 @@ require_section_s4_cleanup_gate() {
     die "Exact Section s4 namespace/Job/log-group residual gate must pass in this delete process."
 }
 
+section_s5_cleanup_gate_binding() {
+  printf '%s|%s|%s|%s|%s\n' \
+    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+    "udemy4-c010-s5-20260724"
+}
+
+require_section_s5_cleanup_gate() {
+  local expected
+  printf -v expected '%s|%s|%s|%s|%s' \
+    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+    "udemy4-c010-s5-20260724"
+  [[ "${SECTION_S5_CLEANUP_GATE_PASSED:-}" == "$expected" ]] ||
+    die "Exact Section s5 namespace residual gate must pass in this delete process."
+}
+
 require_common_cleanup_gate() {
   if [[ -n "${FAILED_CREATE_RECOVERY_GATE_PASSED:-}" ]]; then
     local expected
@@ -459,6 +541,7 @@ require_common_cleanup_gate() {
     return
   fi
   require_section_s4_cleanup_gate
+  require_section_s5_cleanup_gate
 }
 
 assert_section_s4_residuals_absent() {
@@ -469,11 +552,8 @@ assert_section_s4_residuals_absent() {
   elif ! grep -q 'NotFound' <<<"$output"; then
     die "Section s4 namespace residual check failed: $output"
   fi
-  if output="$(kubectl get job s4-log-generator -n udemy4-s4-logs -o name 2>&1)"; then
-    die "Section s4 Job remains; run Section cleanup before common cleanup."
-  elif ! grep -q 'NotFound' <<<"$output"; then
-    die "Section s4 Job residual check failed: $output"
-  fi
+  # A namespaced Job cannot remain after the namespace is confirmed absent.
+  # Avoid querying a namespaced resource until its namespace is known to exist.
   local groups
   groups="$(aws_json logs describe-log-groups --region "$REGION" --log-group-name-prefix "/udemy4/c010/s4/20260725")"
   [[ "$(jq -r '[.logGroups[] | select(.logGroupName == "/udemy4/c010/s4/20260725")] | length' <<<"$groups")" == "0" ]] ||
@@ -482,4 +562,18 @@ assert_section_s4_residuals_absent() {
     "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-s4-logs" "/udemy4/c010/s4/20260725"
   export SECTION_S4_CLEANUP_GATE_PASSED
+}
+
+assert_section_s5_residuals_absent() {
+  assert_exact_kubernetes_context
+  local output
+  if output="$(kubectl get namespace udemy4-c010-s5-20260724 -o name 2>&1)"; then
+    die "Section s5 namespace remains; run Section cleanup before common cleanup."
+  elif ! grep -q 'NotFound' <<<"$output"; then
+    die "Section s5 namespace residual check failed: $output"
+  fi
+  printf -v SECTION_S5_CLEANUP_GATE_PASSED '%s|%s|%s|%s|%s' \
+    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+    "udemy4-c010-s5-20260724"
+  export SECTION_S5_CLEANUP_GATE_PASSED
 }

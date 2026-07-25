@@ -89,7 +89,9 @@ exact account、Region、AWS CLI/kubectl version、2 AZ、`t3.medium` offering�
 
 guard stackを先に作り、exact bindingを確認してからcommon stackをatomicな`cloudformation create-stack`で一度だけ作り、`stack-create-complete`を待ちます。固定名stackが既に存在する場合は`AlreadyExists`で停止し、`deploy`、update、adoptを行いません。common stackの`update-stack`を使えるのは、下記のownership-bound CIDR recoveryだけです。common作成が途中で失敗してもguardは残ります。
 
-guardのSchedulerはcommon stackの直接`DeleteStack`を呼びません。deadlineでexact Step Functions workflowだけを開始し、workflowはcommon stackとEKSを照合してからcleanup Lambdaを一時的にcommon VPCの2 subnetへattachします。LambdaのEKS access entryはcluster-admin policyを持たず、Kubernetes group `udemy4:c010:s4-cleanup`だけへ結合します。common templateが保持するexact RBACは、Section namespace作成直後・Job作成前にSection scriptが適用・再読込検証します。権限はnamespaced Job `s4-log-generator`とcluster-scoped Namespace `udemy4-s4-logs`の`get/delete`だけを`resourceNames`で許可します。Lambdaは専用security groupとcontrol-plane ingressを使い、private EKS endpointからその2 resourceだけを削除・確認します。LambdaをVPCからdetachした後にworkflowがexact log group、common stack、EC2/EBS/ENI/EKS log residualを順に確認し、guardを最後に削除します。作成後は`aws eks update-kubeconfig`、exact context、1 Ready nodeを確認します。
+guardのSchedulerはcommon stackの直接`DeleteStack`を呼びません。deadlineでexact Step Functions workflowだけを開始し、common stackがまだ`CREATE_IN_PROGRESS`ならexact identity・ownership・parametersを検証したまま有限の6時間timeout内で30秒ごとにsupported terminal stateを待ちます。その後workflowはcommon stackとEKSを照合してcleanup Lambdaを一時的にcommon VPCの2 subnetへattachします。LambdaのEKS access entryはcluster-admin policyを持たず、Kubernetes group `udemy4:c010:s4-cleanup`だけへ結合します。
+
+RBACの適用境界は2つです。common `scripts/create.sh`はstack出力のcluster-scoped manifestだけを適用し、s4 namespace `udemy4-s4-logs`とs5 namespace `udemy4-c010-s5-20260724`それぞれに限定した`get/delete`のClusterRole/ClusterRoleBindingを再読込検証します。s4 workload flowはs4 namespaceを作成した後、Job作成前に別の完全manifestを適用し、namespaced Job `s4-log-generator`だけに限定したRole/RoleBindingを再読込検証します。common createはs4 namespaceやnamespaced Job RBACを先に作りません。scheduled cleanupはs4 namespaceが存在するときだけJobを確認・削除し、続いてs4 namespace、s5 namespace、exact log group、common stack、EC2/EBS/ENI/EKS log residualを順に確認してguardを最後に削除します。Lambdaは専用security groupとcontrol-plane ingressを使いprivate EKS endpointへ到達します。作成後は`aws eks update-kubeconfig`、exact context、1 Ready nodeを確認します。
 
 ### 3. statusを確認する
 
@@ -138,7 +140,7 @@ Section 4のREADMEに従ってSection namespaceとlog groupを先に削除しま
 
 `create-stack`が失敗してcommon stackが`ROLLBACK_COMPLETE`、かつexact EKS clusterが不存在の場合だけ、failed-create recoveryへ分岐します。この分岐はSTS account、`ap-northeast-1`、固定stack name/ARN、exact 5 tags、固定9 parameterのkey/valueと唯一の非world CIDR、exact `ROLLBACK_COMPLETE`を照合します。削除済みresource由来のoutputs、current CIDR、kubectl、Kubernetes contextは要求しません。`UPDATE_ROLLBACK_COMPLETE`など他status、tag/parameter/ARN drift、または同名EKS clusterが存在する場合は削除せず停止します。failed stackを削除した後もEC2/EBS/ENI/CloudWatch/EKS residual queryをすべて実行し、guardを最後に削除します。
 
-`scripts/delete.sh`はSection 4のexact namespace `udemy4-s4-logs`、Job `s4-log-generator`、log group `/udemy4/c010/s4/20260725`の不存在を確認してからcommon stackを削除し、同じprocess内で`scripts/verify-cleanup.sh`を実行します。`scripts/verify-cleanup.sh`だけの単独実行はSection residual gateを引き継げないためfail closedで停止します。common残存があればguardを削除せず、AWS CLIのpermission、credential、network errorを「不存在」として扱いません。
+`scripts/delete.sh`のmanual cleanup gateは、s4 exact namespace `udemy4-s4-logs`の不存在（namespace不在後はnamespaced Job endpointを照会しません）、s4 log group `/udemy4/c010/s4/20260725`の不存在、s5 exact namespace `udemy4-c010-s5-20260724`の不存在を確認してからcommon stackを削除し、同じprocess内で`scripts/verify-cleanup.sh`を実行します。scheduled cleanupも同じs4+s5境界を要求しますが、s4 namespaceが存在する間だけexact Job `s4-log-generator`を検査・削除します。`scripts/verify-cleanup.sh`だけの単独実行はSection residual gateを引き継げないためfail closedで停止します。common残存があればguardを削除せず、AWS CLIのpermission、credential、network errorを「不存在」として扱いません。
 
 ## Troubleshooting
 

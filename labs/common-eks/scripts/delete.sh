@@ -15,6 +15,7 @@ if ! aws_exact_not_found 'ValidationError.*does not exist' \
     assert_preflight true
     get_expected_stack_binding
     assert_section_s4_residuals_absent
+    assert_section_s5_residuals_absent
   fi
   aws cloudformation delete-stack --region "$REGION" --stack-name "$STACK_ID" --no-cli-pager
   aws cloudformation wait stack-delete-complete --region "$REGION" --stack-name "$STACK_ID" --no-cli-pager

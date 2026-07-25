@@ -1,16 +1,43 @@
-# Public learner common EKS inventory.
-# Sort key: UTF-8 package-relative path bytes, ordinal ascending. Format: lowercase SHA-256, two spaces, path, LF.
+# Public learner common EKS and Section 5 inventory.
+# Sort key: UTF-8 repository-relative path bytes, ordinal ascending. Format: lowercase SHA-256, two spaces, path, LF.
 # Excludes: artifact-inventory.sha256 itself and __pycache__/**.
-# Recorded files: 12.
-73b62ca5b82fe05ddd317e7de11fe1fec275c5983c5329f9af52dfdae50e6403  README.md
-5e3957d47ebf28be86c062d084e7538977ff29d0cf08f3606aff5d5c5b8e0ff1  cleanup-guard.yaml
-8314f57dd4a5a763c3c5284d640b26f423bab785fef8bd968010fdd08be6fb71  fixtures/rollback-complete-stack.json
-07900026b47378b7270459c437642966e07d34d30db8341553d1cc1c5948986d  scripts/common.sh
-e45153ce15c4b32530abcd0cbdcf8d552e914d3046603f98fcdda3c42c9ef6af  scripts/create.sh
-1d055efe509c4cb958801daa17813d62376c42a816ca27b61ba90906e3e75683  scripts/delete.sh
-56d9d2f942a1caafaf44fd97461f07566e4248033766231c1a6e70505b47d8c9  scripts/preflight.sh
-686841692d52802d85a55cc6aa2feb9f94e3824b8074fc771bd7c2e6e5a2622a  scripts/recover-cidr.sh
-710da06598e2d66c652733999008567b8a59a86126f3e654ed85bd8954317bf1  scripts/status.sh
-8dcdc51c3de6898b6bce49dfe53d7b9e645c0fb71417abdeda64417b1a3b2079  scripts/verify-cleanup.sh
-361ca93cb0ec1ffbe31160a807e5eb9f8992cdfe58b52a991866888b346dce9c  template.yaml
-3fec07e541f78337b118d97511b49333f8e437f6f72b1a94eb5272966691bbe7  tests/test_common_eks.py
+# Recorded files: 39.
+56921db1273f27b18b41fa2e819ff690bfefa004344e506b5909c23f9f846497  labs/common-eks/README.md
+01374ca095fe4e37875d21beca1a62e43b5c57598717f1f02231da481e899209  labs/common-eks/cleanup-guard.yaml
+8314f57dd4a5a763c3c5284d640b26f423bab785fef8bd968010fdd08be6fb71  labs/common-eks/fixtures/rollback-complete-stack.json
+bc4d2bbf5fca4d05118f86a0074c0d6baf9ad7977378cc33135c7418b732a9cf  labs/common-eks/scripts/common.sh
+a86b20a7835af2a7266c2b76beeac2642e1ec292d0048057b946e49a1e1b0c53  labs/common-eks/scripts/create.sh
+9a363dadec7d85a59b94bf0d7ab7b6d136d05334566e4988050c7eea8a6bea15  labs/common-eks/scripts/delete.sh
+56d9d2f942a1caafaf44fd97461f07566e4248033766231c1a6e70505b47d8c9  labs/common-eks/scripts/preflight.sh
+686841692d52802d85a55cc6aa2feb9f94e3824b8074fc771bd7c2e6e5a2622a  labs/common-eks/scripts/recover-cidr.sh
+710da06598e2d66c652733999008567b8a59a86126f3e654ed85bd8954317bf1  labs/common-eks/scripts/status.sh
+8dcdc51c3de6898b6bce49dfe53d7b9e645c0fb71417abdeda64417b1a3b2079  labs/common-eks/scripts/verify-cleanup.sh
+aecbf2ade094d746214100617033bb3199413d43a1a314399fe4cfa8d85d7dfd  labs/common-eks/template.yaml
+dca7d255a4ddf4b6ea77761efb6b8303a51adfc2c3aefc42a2ac359e5f65024d  labs/common-eks/tests/test_common_eks.py
+b443d23e25805ab4ae652f14f7b6b09163e5db468a39c532fae564cb3de04f6b  labs/s5-pod-resource-first-response/README.md
+d13db5cd51345be0eb1434cdc5fdcb33906af74dc34b3f33d80c9a5973fafbb0  labs/s5-pod-resource-first-response/analyze.py
+73108918fc262109d487d0c02b57cc886d714002a2e7a08ab893191934e87e76  labs/s5-pod-resource-first-response/expected-results.json
+45111d98ba2e8ed4d49d2d31aae4adace2ccdade6368dff512ac582e3a3db8e7  labs/s5-pod-resource-first-response/fixtures/describe-crashloop-app.json
+ba827e842e78190e5d57ebe3fb14326f026223bdc0dd62e512493f591ef3a883  labs/s5-pod-resource-first-response/fixtures/describe-crashloop-oom.json
+9bfade6d456b1a03a0dc300ddcc39c256a46f75cfdd05eafd55377c889f33b19  labs/s5-pod-resource-first-response/fixtures/describe-crashloop-probe.json
+bda5e4cc48a900701246e84906ec2bdcbc54a54cbca6d13916d474817420cda1  labs/s5-pod-resource-first-response/fixtures/describe-pending-affinity.json
+c4b1b956f3c13ca0d511c1ff25705150e7c863908ed738793e80519cf4cfbe03  labs/s5-pod-resource-first-response/fixtures/describe-pending-capacity.json
+2bd8865b3971cbcbcb256e5ad63a7ffbac2a08d055dfcb1708abaebf787dc7a0  labs/s5-pod-resource-first-response/fixtures/describe-pending-taint.json
+d34c7b1f94806d2d91bbf67cd32a5397b044ff2cd13b21ced196122ce74cad22  labs/s5-pod-resource-first-response/fixtures/events.json
+79558f28a575799b283945298c63a2f1520f90e1e404a3358e276cc68a3ffabb  labs/s5-pod-resource-first-response/fixtures/get-nodes.json
+9017cade79237b532d9ef947850de05670ef275f66ecc0519b3b5cdb8febff39  labs/s5-pod-resource-first-response/fixtures/get-pods.json
+5a93c5a8e5abb069a4affab887b860e330ddb7920ceea518890d6debffb0ec4b  labs/s5-pod-resource-first-response/fixtures/logs-crashloop-app-previous.txt
+569411ba289019c3b33bab23bad2049ba259731091d810913bd463645f7bb4b5  labs/s5-pod-resource-first-response/fixtures/logs-crashloop-oom-previous.txt
+14d8d089895a7b4937997cfbf8be289369df6aef3dd2b41671d92d4ae3317869  labs/s5-pod-resource-first-response/fixtures/logs-crashloop-probe-previous.txt
+3c4436aba6547108515fe14acd86cbbee1638caf25af17b3e0009c7fffe05a4e  labs/s5-pod-resource-first-response/fixtures/manifest.json
+4af4f0134bf4aba806cf809b32a6b0475b9ddee370ee0f0bde27b9d586dff247  labs/s5-pod-resource-first-response/lab_validate.py
+138fabb684aaa8778611ff0b2380089800ab4a4638be88cc462fda3f4d3a0c0f  labs/s5-pod-resource-first-response/manifests/00-namespace.yaml
+ed50f27d9623841774226fb1fddff53bb6ec76afd010523d91f1519d3fd662b7  labs/s5-pod-resource-first-response/manifests/10-pending-capacity.yaml
+20108eebe65dcec670ad59810fb90491a1534e63a7f3b0e986fada86a327ec4f  labs/s5-pod-resource-first-response/manifests/20-crashloop-app.yaml
+a463e39a7233129eacbb9849e191bd1a7a0d6aec5ca98d12c121f386eccbe520  labs/s5-pod-resource-first-response/manifests/30-crashloop-memory.yaml
+1ccf26591f92d51b3c769ff88a9d55c1cbc2e88819c9d8d7b1c4d307c25fc9a1  labs/s5-pod-resource-first-response/scripts/apply-scenarios.sh
+0a7f2369d0fad8548d1bddcff7e9e194a175c5bcc01a80d3143d7a82414ef3ba  labs/s5-pod-resource-first-response/scripts/capture-evidence.sh
+60726bafc82eb36302cadb36057af7e3533f78a0241b21a6a0da885f7d84aefa  labs/s5-pod-resource-first-response/scripts/cleanup-section.sh
+63b341053d370eac94d337f29eb2e0f99ccf50dd902ba43c7b3d028cf2859c6e  labs/s5-pod-resource-first-response/scripts/common.sh
+7879f031f45ef7ff7b5b718d4f9ddf61b77aca2524c645bdf7f3ad94a99deee2  labs/s5-pod-resource-first-response/tests/test_analyze.py
+792ccf24a9f2ab19e992a3080ed01e04dad4826c6412c9b9aaf376c3b7c6f9ba  labs/s5-pod-resource-first-response/tests/test_lab_contract.py

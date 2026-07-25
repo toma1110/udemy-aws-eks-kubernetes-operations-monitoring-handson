@@ -331,7 +331,7 @@ Outputs:
   TemplateContract:
     Value: !Ref TemplateContractTag
   CleanupRbacManifest:
-    Description: Exact least-privilege Kubernetes RBAC applied once by create.sh after atomic stack creation.
+    Description: Exact s4 namespace, Job, and cluster cleanup RBAC applied by the s4 workload flow after it creates the s4 namespace.
     Value: |
       apiVersion: v1
       kind: List
@@ -400,6 +400,99 @@ Outputs:
             apiGroup: rbac.authorization.k8s.io
             kind: ClusterRole
             name: udemy4-c010-s4-cleanup-namespace
+          subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: Group
+              name: udemy4:c010:s4-cleanup
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: udemy4-c010-s5-cleanup-namespace
+            labels:
+              course: c010
+              section: s5
+              managed-by: udemy4
+          rules:
+            - apiGroups: [""]
+              resources: ["namespaces"]
+              resourceNames: ["udemy4-c010-s5-20260724"]
+              verbs: ["get", "delete"]
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: udemy4-c010-s5-cleanup-namespace
+            labels:
+              course: c010
+              section: s5
+              managed-by: udemy4
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: udemy4-c010-s5-cleanup-namespace
+          subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: Group
+              name: udemy4:c010:s4-cleanup
+  ClusterCleanupRbacManifest:
+    Description: Exact cluster-scoped s4 and s5 namespace cleanup RBAC applied and verified by create.sh.
+    Value: |
+      apiVersion: v1
+      kind: List
+      items:
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: udemy4-c010-s4-cleanup-namespace
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+          rules:
+            - apiGroups: [""]
+              resources: ["namespaces"]
+              resourceNames: ["udemy4-s4-logs"]
+              verbs: ["get", "delete"]
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: udemy4-c010-s4-cleanup-namespace
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: udemy4-c010-s4-cleanup-namespace
+          subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: Group
+              name: udemy4:c010:s4-cleanup
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: udemy4-c010-s5-cleanup-namespace
+            labels:
+              course: c010
+              section: s5
+              managed-by: udemy4
+          rules:
+            - apiGroups: [""]
+              resources: ["namespaces"]
+              resourceNames: ["udemy4-c010-s5-20260724"]
+              verbs: ["get", "delete"]
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: udemy4-c010-s5-cleanup-namespace
+            labels:
+              course: c010
+              section: s5
+              managed-by: udemy4
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: udemy4-c010-s5-cleanup-namespace
           subjects:
             - apiGroup: rbac.authorization.k8s.io
               kind: Group

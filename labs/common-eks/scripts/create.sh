@@ -58,6 +58,7 @@ aws cloudformation wait stack-create-complete \
 get_expected_stack_binding
 aws eks update-kubeconfig --region "$REGION" --name "$CLUSTER_NAME" --no-cli-pager >/dev/null
 assert_exact_kubernetes_context
+apply_exact_cluster_cleanup_rbac
 kubectl wait --for=condition=Ready nodes --all --timeout=10m
 printf 'Create and ownership binding completed. Guard %s remains active until verified cleanup; deadline %s.\n' \
   "$GUARD_STACK_ID" "$CLEANUP_DEADLINE_UTC"

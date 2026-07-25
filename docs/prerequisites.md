@@ -37,7 +37,7 @@ EKSクラスターを新しく作る場合は、AWS公式ドキュメントで�
 
 一般の演習や既存resource向けscriptは、EKSクラスターを自動作成しません。新規作成する場合は、[Amazon EKS クラスターの作成](https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html)を確認し、作成するVPC、サブネット、IAMロール、ノード、実行時間、削除方法を先に決めてください。
 
-限定例外として、Section 5のlive routeは[共通EKS基盤](../labs/common-eks/README.md)の`create.ps1`で、固定名の短命な学習用stackとEKSクラスターを作成します。このscriptはREADMEに記載したexact account、Region、CIDR、期限、固定名を検証し、既存stackの更新や引き継ぎを行いません。Section 5以外の既存クラスターや任意resourceを作成する一般-purpose scriptとして使用しないでください。
+限定例外として、Section 5のlive routeはAWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBashを既定環境とし、[共通EKS基盤](../labs/common-eks/README.md)の`scripts/create.sh`で固定名の短命な学習用stackとEKSクラスターを作成します。AWS CLI `2.12.3`以上、cluster versionと同じか前後1 minor以内の`kubectl`、`jq`、Python 3、事前認証済みconsole identity、Region別`$HOME`の空き容量を確認します。scriptはREADMEに記載したexact account、Region、CIDR、期限、固定名を検証し、既存stackの更新や引き継ぎを行いません。Section 5以外の既存クラスターや任意resourceを作成するgeneral-purpose scriptとして使用しないでください。
 
 ## Container Insightsの前提
 
