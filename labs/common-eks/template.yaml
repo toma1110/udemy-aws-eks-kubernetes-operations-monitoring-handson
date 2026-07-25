@@ -22,10 +22,10 @@ Parameters:
     Type: String
     Default: C010
     AllowedValues: [C010]
-  LabTag:
+  WorkPackageTag:
     Type: String
-    Default: section-s5
-    AllowedValues: [section-s5]
+    Default: c010-common-eks
+    AllowedValues: [c010-common-eks]
   ManagedByTag:
     Type: String
     Default: udemy4
@@ -49,7 +49,7 @@ Resources:
       Tags:
         - {Key: Name, Value: !Sub "${ClusterName}-vpc"}
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -59,7 +59,7 @@ Resources:
       Tags:
         - {Key: Name, Value: !Sub "${ClusterName}-igw"}
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -76,7 +76,7 @@ Resources:
       Tags:
         - {Key: Name, Value: !Sub "${ClusterName}-public"}
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -99,7 +99,7 @@ Resources:
         - {Key: Name, Value: !Sub "${ClusterName}-public-a"}
         - {Key: "kubernetes.io/role/elb", Value: "1"}
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -114,7 +114,7 @@ Resources:
         - {Key: Name, Value: !Sub "${ClusterName}-public-b"}
         - {Key: "kubernetes.io/role/elb", Value: "1"}
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -130,6 +130,24 @@ Resources:
       RouteTableId: !Ref PublicRouteTable
       SubnetId: !Ref PublicSubnetB
 
+  CleanupHandlerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allows only the fixed deadline cleanup Lambda to reach the private EKS API.
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.42.0.0/16
+      VpcId: !Ref Vpc
+      Tags:
+        - {Key: Name, Value: !Sub "${ClusterName}-cleanup-handler"}
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+        - {Key: TemplateContract, Value: !Ref TemplateContractTag}
+
   ClusterRole:
     Type: AWS::IAM::Role
     Properties:
@@ -143,7 +161,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
       Tags:
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -162,7 +180,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
       Tags:
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -185,21 +203,21 @@ Resources:
           - ResourceType: instance
             Tags:
               - {Key: Course, Value: !Ref CourseTag}
-              - {Key: Lab, Value: !Ref LabTag}
+              - {Key: WorkPackage, Value: !Ref WorkPackageTag}
               - {Key: ManagedBy, Value: !Ref ManagedByTag}
               - {Key: Purpose, Value: !Ref PurposeTag}
               - {Key: TemplateContract, Value: !Ref TemplateContractTag}
           - ResourceType: volume
             Tags:
               - {Key: Course, Value: !Ref CourseTag}
-              - {Key: Lab, Value: !Ref LabTag}
+              - {Key: WorkPackage, Value: !Ref WorkPackageTag}
               - {Key: ManagedBy, Value: !Ref ManagedByTag}
               - {Key: Purpose, Value: !Ref PurposeTag}
               - {Key: TemplateContract, Value: !Ref TemplateContractTag}
           - ResourceType: network-interface
             Tags:
               - {Key: Course, Value: !Ref CourseTag}
-              - {Key: Lab, Value: !Ref LabTag}
+              - {Key: WorkPackage, Value: !Ref WorkPackageTag}
               - {Key: ManagedBy, Value: !Ref ManagedByTag}
               - {Key: Purpose, Value: !Ref PurposeTag}
               - {Key: TemplateContract, Value: !Ref TemplateContractTag}
@@ -207,7 +225,7 @@ Resources:
         - ResourceType: launch-template
           Tags:
             - {Key: Course, Value: !Ref CourseTag}
-            - {Key: Lab, Value: !Ref LabTag}
+            - {Key: WorkPackage, Value: !Ref WorkPackageTag}
             - {Key: ManagedBy, Value: !Ref ManagedByTag}
             - {Key: Purpose, Value: !Ref PurposeTag}
 
@@ -219,7 +237,7 @@ Resources:
         AuthenticationMode: API_AND_CONFIG_MAP
         BootstrapClusterCreatorAdminPermissions: true
       ResourcesVpcConfig:
-        EndpointPrivateAccess: false
+        EndpointPrivateAccess: true
         EndpointPublicAccess: true
         PublicAccessCidrs:
           - !Ref ApiPublicAccessCidr
@@ -231,7 +249,32 @@ Resources:
         SupportType: STANDARD
       Tags:
         - {Key: Course, Value: !Ref CourseTag}
-        - {Key: Lab, Value: !Ref LabTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
+        - {Key: ManagedBy, Value: !Ref ManagedByTag}
+        - {Key: Purpose, Value: !Ref PurposeTag}
+        - {Key: TemplateContract, Value: !Ref TemplateContractTag}
+
+  CleanupHandlerEksIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: Exact cleanup-handler HTTPS path to the private EKS endpoint.
+      FromPort: 443
+      GroupId: !GetAtt EksCluster.ClusterSecurityGroupId
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref CleanupHandlerSecurityGroup
+      ToPort: 443
+
+  CleanupHandlerAccessEntry:
+    Type: AWS::EKS::AccessEntry
+    Properties:
+      ClusterName: !Ref EksCluster
+      KubernetesGroups:
+        - udemy4:c010:s4-cleanup
+      PrincipalArn: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/udemy4-c010-common-20260724-cleanup-handler-role"
+      Type: STANDARD
+      Tags:
+        - {Key: Course, Value: !Ref CourseTag}
+        - {Key: WorkPackage, Value: !Ref WorkPackageTag}
         - {Key: ManagedBy, Value: !Ref ManagedByTag}
         - {Key: Purpose, Value: !Ref PurposeTag}
         - {Key: TemplateContract, Value: !Ref TemplateContractTag}
@@ -241,6 +284,8 @@ Resources:
     DependsOn:
       - PublicSubnetARoute
       - PublicSubnetBRoute
+      - CleanupHandlerEksIngress
+      - CleanupHandlerAccessEntry
     Properties:
       ClusterName: !Ref EksCluster
       NodegroupName: !Sub "${ClusterName}-node"
@@ -259,7 +304,7 @@ Resources:
         - !Ref PublicSubnetB
       Tags:
         Course: !Ref CourseTag
-        Lab: !Ref LabTag
+        WorkPackage: !Ref WorkPackageTag
         ManagedBy: !Ref ManagedByTag
         Purpose: !Ref PurposeTag
         TemplateContract: !Ref TemplateContractTag
@@ -275,7 +320,87 @@ Outputs:
     Value: !Ref Vpc
   PublicSubnetIds:
     Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+  CleanupSecurityGroupId:
+    Value: !Ref CleanupHandlerSecurityGroup
   ApiPublicAccessCidr:
     Value: !Ref ApiPublicAccessCidr
   TemplateContract:
     Value: !Ref TemplateContractTag
+  CleanupRbacManifest:
+    Description: Exact least-privilege Kubernetes RBAC applied once by create.sh after atomic stack creation.
+    Value: |
+      apiVersion: v1
+      kind: List
+      items:
+        - apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: udemy4-s4-logs
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: udemy4-s4-cleanup-job
+            namespace: udemy4-s4-logs
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+          rules:
+            - apiGroups: ["batch"]
+              resources: ["jobs"]
+              resourceNames: ["s4-log-generator"]
+              verbs: ["get", "delete"]
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: udemy4-s4-cleanup-job
+            namespace: udemy4-s4-logs
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: udemy4-s4-cleanup-job
+          subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: Group
+              name: udemy4:c010:s4-cleanup
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRole
+          metadata:
+            name: udemy4-c010-s4-cleanup-namespace
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+          rules:
+            - apiGroups: [""]
+              resources: ["namespaces"]
+              resourceNames: ["udemy4-s4-logs"]
+              verbs: ["get", "delete"]
+        - apiVersion: rbac.authorization.k8s.io/v1
+          kind: ClusterRoleBinding
+          metadata:
+            name: udemy4-c010-s4-cleanup-namespace
+            labels:
+              course: c010
+              section: s4
+              managed-by: udemy4
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: udemy4-c010-s4-cleanup-namespace
+          subjects:
+            - apiGroup: rbac.authorization.k8s.io
+              kind: Group
+              name: udemy4:c010:s4-cleanup

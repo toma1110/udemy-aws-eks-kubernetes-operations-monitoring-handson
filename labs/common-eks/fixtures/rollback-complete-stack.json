@@ -1,0 +1,27 @@
+{
+  "Stacks": [
+    {
+      "StackId": "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/udemy4-c010-common-20260724/fixture",
+      "StackName": "udemy4-c010-common-20260724",
+      "StackStatus": "ROLLBACK_COMPLETE",
+      "Parameters": [
+        {"ParameterKey": "ApiPublicAccessCidr", "ParameterValue": "198.51.100.10/32"},
+        {"ParameterKey": "AvailabilityZoneA", "ParameterValue": "ap-northeast-1a"},
+        {"ParameterKey": "AvailabilityZoneB", "ParameterValue": "ap-northeast-1c"},
+        {"ParameterKey": "ClusterName", "ParameterValue": "udemy4-c010-common-20260724"},
+        {"ParameterKey": "CourseTag", "ParameterValue": "C010"},
+        {"ParameterKey": "ManagedByTag", "ParameterValue": "udemy4"},
+        {"ParameterKey": "PurposeTag", "ParameterValue": "training"},
+        {"ParameterKey": "TemplateContractTag", "ParameterValue": "udemy4-c010-common-eks-v2-20260724"},
+        {"ParameterKey": "WorkPackageTag", "ParameterValue": "c010-common-eks"}
+      ],
+      "Tags": [
+        {"Key": "Course", "Value": "C010"},
+        {"Key": "ManagedBy", "Value": "udemy4"},
+        {"Key": "Purpose", "Value": "training"},
+        {"Key": "TemplateContract", "Value": "udemy4-c010-common-eks-v2-20260724"},
+        {"Key": "WorkPackage", "Value": "c010-common-eks"}
+      ]
+    }
+  ]
+}

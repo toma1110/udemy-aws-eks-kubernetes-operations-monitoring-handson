@@ -1,107 +1,160 @@
-# 共通EKS基盤（Sections s2–s7）
+# Common EKS foundation（AWS CloudShell / Bash）
 
-`ap-northeast-1`に2 AZのpublic subnet、EKS cluster、1台の`ON_DEMAND t3.medium` managed node（20 GiB encrypted gp3）を作る短命な学習基盤です。NAT Gateway、Load Balancer、Container Insights、追加EBS volumeは作りません。
+この共通labは、Section 4を含むEKS hands-on用に、東京Regionへ短時間だけ1 cluster・1 managed nodeを作ります。受講者向けの既定実行環境はAWS Management Consoleから起動するAWS CloudShellのBashです。local PowerShellは不要です。
 
-固定stack/cluster名は`udemy4-c010-common-20260724`、固定template contractは`udemy4-c010-common-eks-v2-20260724`です。stackとEKS clusterのownership tagは次の5個だけです。
+## 目的
 
-- `Course=C010`
-- `Lab=section-s5`
-- `ManagedBy=udemy4`
-- `Purpose=training`
-- `TemplateContract=udemy4-c010-common-eks-v2-20260724`
+- exact AWS accountと`ap-northeast-1`へ実行先を固定する
+- `udemy4-c010-common-20260724`を固定名・固定tagで作る
+- runtime ownership tag `WorkPackage=c010-common-eks`でcommon resourceを一貫して識別する
+- managed nodeからEKS API serverへVPC内で到達できるprivate endpointを使いながら、public endpointはCloudShellのexact `/32`だけに制限する
+- 4時間後のcleanup guardを先に作り、CloudShell切断後もexact Section→common→guard cleanup workflowを最大6時間以内に開始する
+- Section resourceを先に削除した後、EKS・EC2・EBS・ENI・CloudWatchの残存を確認し、guardを最後に削除する
 
-## Fail-closed境界
+## 前提条件
 
-- すべての外部scriptで`AWS_ACCOUNT_ID`を必須入力とし、STS結果との完全一致を確認します。値は公開ファイル、共有メモ、提出物へ保存しません。
-- Regionは常に`ap-northeast-1`を明示し、Region endpointも確認します。
-- 作成前に固定名stackが存在すれば、ownershipが一致していても更新・adoptせず停止します。
-- `status.ps1`と`delete.ps1`は操作前にstack ARNのaccount/Region/name、5個だけのstack tag、`ClusterName`/`Region`/`TemplateContract` outputを再照合します。EKS clusterはARN、5個のownership tagに加え、CloudFormationが付与するsystem tag 3個だけを許可し、stack name、完全なstack ID、logical ID `EksCluster`へ完全一致させます。
-- Kubernetes contextは`arn:aws:eks:ap-northeast-1:<AWS_ACCOUNT_ID>:cluster/udemy4-c010-common-20260724`との完全一致が必要です。substring一致は使用しません。
-- 全AWS CLI / kubectl実行はexit codeを検査するwrapper経由です。not-foundを許す箇所はCloudFormation `ValidationError ... does not exist`またはEKS `ResourceNotFoundException`を明示解析し、認証、network、throttling等はempty扱いしません。
-- API CIDRにdefaultはなく、`0.0.0.0/0`をtemplateとscriptで拒否します。
+1. AWS Management Consoleで、hands-on用として承認されたexact accountへsign inします。
+2. Console右上のRegion selectorで**東京 `ap-northeast-1`**を選び、CloudShellを開きます。CloudShellのterminal tabにも東京Regionが表示されることを確認します。
+3. Bash promptで次を実行します。CloudShellのconsole credentialは事前認証済みであり、`aws sts get-caller-identity`がそのidentityを返します。出力accountが承認済みaccountと一致しなければ停止してください。
 
-## 必須preflight入力
+```bash
+export AWS_REGION="ap-northeast-1"
+export AWS_DEFAULT_REGION="ap-northeast-1"
 
-PowerShell 7、AWS CLI v2、`kubectl`、承認済みAWS認証が必要です。EKS control plane versionはtemplateで固定せず、実行時に利用可能な標準サポート版を使うため、作成直前にAWS公式情報と`kubectl`互換性を再確認します。scenario imageは`busybox:1.36.1`と`python:3.12-alpine`へtag固定されています。
+aws --version
+kubectl version --client --output=json
+jq --version
+aws configure list
 
-次の5入力は毎回の実行shellだけに設定します。
+CALLER_ACCOUNT="$(aws sts get-caller-identity \
+  --region "$AWS_REGION" \
+  --query Account \
+  --output text \
+  --no-cli-pager)"
+printf 'Caller account: %s\n' "$CALLER_ACCOUNT"
 
-```powershell
-$env:AWS_ACCOUNT_ID = "<exact-12-digit-account-id>"
-$env:API_PUBLIC_ACCESS_CIDR = "<trusted-public-ip>/32"
-$env:AVAILABILITY_ZONE_A = "ap-northeast-1a"
-$env:AVAILABILITY_ZONE_B = "ap-northeast-1c"
-$env:CLEANUP_DEADLINE_UTC = [DateTimeOffset]::UtcNow.AddHours(4).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
-./scripts/preflight.ps1
+# 表示された値を承認済みexact accountと照合してからbindする
+export AWS_ACCOUNT_ID="$CALLER_ACCOUNT"
 ```
 
-例の式は実行時のUTCから4時間先をexact formatで設定します。deadlineは実行時刻より15分超先、かつ6時間以内のUTCでなければ拒否します。EKS作成時間と演習時間を考慮し、通常は2–5時間先にします。preflightは次を実値で検査します。
+AWS CLIは`2.12.3`以上、`kubectl`はcluster versionと同じ、または前後1 minor以内を使います。scriptは表示文字列ではなくsemantic versionとして比較し、version条件を満たさない場合は作成を始めません。
 
-1. STS accountと必須account入力の一致。
-2. `ap-northeast-1`と、選択した異なる2 AZの存在/available状態。
-3. 両方の選択AZでの`t3.medium` offering。
-4. EKS cluster quota値と現在cluster数を比較した1 cluster以上のheadroom。
-5. CloudFormation templateのservice validation。
-6. 固定common stackと固定guard stackの両方が存在しないこと。
+CloudShellの`$HOME`はRegionごとに1 GBの永続領域です。作業fileと後で使うevidenceは`$HOME`配下へ置き、容量を確認します。VPC environmentではpersistent storageを利用できないため、このlabは通常のCloudShell environmentから開始します。
 
-callerにはCloudFormation、EKS、VPC/EC2、Service Quotas read、EventBridge Scheduler、IAM role作成、`iam:PassRole`、削除、残存確認に必要な権限が必要です。
-
-## 作成
-
-```powershell
-./scripts/create.ps1
+```bash
+printf 'HOME=%s\n' "$HOME"
+df -h "$HOME"
 ```
 
-作成scriptもpreflightを再実行し、固定common stackと固定guard stackの不在をもう一度確認します。最初に外部guard stack `udemy4-c010-common-20260724-guard`を作成し、account/Region/name、5個のexact tag、5個のoutputをbindingしてからcommon stackを作成します。guard作成またはbindingが失敗すればcommon stack作成へ進みません。common stack作成や後続確認が失敗してもguardをrollback/deleteせず残します。`cloudformation deploy`を更新目的には使いません。
+1 GBに近い場合は不要fileを整理してから進めます。downloadが必要なevidenceはcleanup後に回収し、不要になったlocal copyも削除します。
 
-## Durable automatic cleanup guard
+## Cost warning
 
-chargeableなcommon stackとは別の`cleanup-guard.yaml`を、common stackより先にCloudFormationで作ります。guard stackは必須deadlineにEventBridge Scheduler one-time scheduleを作ります。targetはuniversal AWS SDK `cloudformation:DeleteStack`で、専用roleが削除できるResourceは次のexact common stack ARNだけです。roleのtrustも`aws:SourceAccount`を現在account、`aws:SourceArn`を現在account/Regionのexact default schedule group ARNへ制限します。
+EKS control plane、`t3.medium` 1台、20 GiB gp3、public IPv4、CloudWatch Logsに料金が発生します。2026-07-25にAWS Price List APIで確認した6時間のEKS/EC2/EBS/public IPv4 subtotal概算は約USD 0.97です。cleanup guardはScheduler、Step Functions、短時間のLambdaを追加するため、そのrequest/execution料金も発生します。guardはNAT Gateway、専用EIP、常時実行computeを作りません。Section 4ではさらにlog ingestionとLogs Insights scanが発生します。実請求は利用時間、request/state transition、data量、tax、discount、Free Tier、meteringで変わります。実行直前に[Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)、[AWS Lambda pricing](https://aws.amazon.com/lambda/pricing/)、[AWS Step Functions pricing](https://aws.amazon.com/step-functions/pricing/)、[Amazon EC2 On-Demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/)、[CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)を確認してください。
 
-`arn:aws:cloudformation:ap-northeast-1:<AWS_ACCOUNT_ID>:stack/udemy4-c010-common-20260724/*`
+## Setup
 
-現在の`AWS::Scheduler::Schedule` CloudFormation resource schemaはScheduler APIの`ActionAfterCompletion`を公開していないため、その未対応propertyはguard templateへ記述しません。one-time targetの成否にかかわらず外部guard stackは残ります。`delete.ps1`はcommon stackが既にない場合も実行でき、common stack/EKS/課金対象残存の全queryが成功してemptyになった後だけ、exact guard bindingとschedule targetを再確認してguard stackを削除します。残存確認に失敗した場合はguardを削除しません。
+このREADMEがあるdirectoryを`COMMON_EKS_DIR`へ設定します。packageはCloudShellの`$HOME`配下に置きます。
 
-## 状態確認
+```bash
+export COMMON_EKS_DIR="$(pwd)"
+chmod +x "$COMMON_EKS_DIR"/scripts/*.sh
 
-同じshellで少なくとも`AWS_ACCOUNT_ID`を設定し、exact kube contextを選んで実行します。
+CLOUDSHELL_PUBLIC_IP="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+export API_PUBLIC_ACCESS_CIDR="${CLOUDSHELL_PUBLIC_IP}/32"
+export AVAILABILITY_ZONE_A="ap-northeast-1a"
+export AVAILABILITY_ZONE_B="ap-northeast-1c"
 
-```powershell
-./scripts/status.ps1
+# 既定は4時間後。scriptは15分超、最大6時間以内だけを受理する
+export CLEANUP_DEADLINE_UTC="$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%M:%SZ')"
 ```
 
-期待結果はCloudFormation `CREATE_COMPLETE`、EKS `ACTIVE`、node 1台が`Ready`です。bindingが1項目でも不一致なら状態表示を続けません。
+`API_PUBLIC_ACCESS_CIDR`へ`0.0.0.0/0`は指定できません。templateは`EndpointPrivateAccess: true`と`EndpointPublicAccess: true`を併用し、public accessは上記exact CIDRへ限定します。これはrestricted public endpointだけでmanaged nodeがAPI serverへ到達できず`NodeCreationFailure`になった再発を防ぐためです。
 
-## 費用
+## 手順
 
-2026-07-24T07:00:00+09:00取得のTokyo単価は、EKS標準サポートUSD 0.10/cluster時、Linux `t3.medium` On-Demand USD 0.0544/時、gp3 USD 0.096/GB月、public IPv4 USD 0.005/IP時です。6時間の基礎概算は`6 × (0.10 + 0.0544 + 0.005) + 20 × 0.096 × 6/730` = 約USD 0.97です。
+### 1. fail-closed preflight
 
-EventBridge Schedulerのone-time invocation、data transfer、CloudWatch、税、為替、pricing変更、追加resource、無料枠/割引はこの式に含めません。実請求は変わります。直前に[Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)、[Amazon EC2 On-Demand pricing](https://aws.amazon.com/ec2/pricing/on-demand/)、[Amazon EBS pricing](https://aws.amazon.com/ebs/pricing/)、[Amazon VPC pricing](https://aws.amazon.com/vpc/pricing/)、[EventBridge Scheduler pricing](https://aws.amazon.com/eventbridge/pricing/)を再確認します。
-
-## 手動削除と残存確認
-
-Section namespace cleanup後、同じexact accountで実行します。
-
-```powershell
-./scripts/delete.ps1
+```bash
+"$COMMON_EKS_DIR/scripts/preflight.sh"
 ```
 
-scriptはcommon stackが存在すればbinding済みstack IDだけを削除し、`verify-cleanup.ps1`でstack、cluster、5 tag付きEC2/EBS/ENI、cluster descriptionのENI、cluster prefixのCloudWatch log groupを確認します。各queryが成功し、全結果がemptyの場合だけexact guardを削除し、guard stack、schedule、roleの消失も確認します。access/network/throttlingや不明なnot-foundは失敗です。wildcard deleteは行いません。
+exact account、Region、AWS CLI/kubectl version、2 AZ、`t3.medium` offering、EKS quota、template、固定stack不存在、deadlineを確認します。
 
-automatic guardが既にcommon stackを削除した場合も、同じaccount入力で同じcleanup入口を実行します。
+### 2. cleanup guardとcommon EKSを作る
 
-```powershell
-./scripts/delete.ps1
+```bash
+"$COMMON_EKS_DIR/scripts/create.sh"
 ```
 
-## 公式根拠
+guard stackを先に作り、exact bindingを確認してからcommon stackをatomicな`cloudformation create-stack`で一度だけ作り、`stack-create-complete`を待ちます。固定名stackが既に存在する場合は`AlreadyExists`で停止し、`deploy`、update、adoptを行いません。common stackの`update-stack`を使えるのは、下記のownership-bound CIDR recoveryだけです。common作成が途中で失敗してもguardは残ります。
 
-取得時刻: `2026-07-24T07:00:00+09:00`
+guardのSchedulerはcommon stackの直接`DeleteStack`を呼びません。deadlineでexact Step Functions workflowだけを開始し、workflowはcommon stackとEKSを照合してからcleanup Lambdaを一時的にcommon VPCの2 subnetへattachします。LambdaのEKS access entryはcluster-admin policyを持たず、Kubernetes group `udemy4:c010:s4-cleanup`だけへ結合します。common templateが保持するexact RBACは、Section namespace作成直後・Job作成前にSection scriptが適用・再読込検証します。権限はnamespaced Job `s4-log-generator`とcluster-scoped Namespace `udemy4-s4-logs`の`get/delete`だけを`resourceNames`で許可します。Lambdaは専用security groupとcontrol-plane ingressを使い、private EKS endpointからその2 resourceだけを削除・確認します。LambdaをVPCからdetachした後にworkflowがexact log group、common stack、EC2/EBS/ENI/EKS log residualを順に確認し、guardを最後に削除します。作成後は`aws eks update-kubeconfig`、exact context、1 Ready nodeを確認します。
 
-- [EKS用VPCとpublic subnet](https://docs.aws.amazon.com/eks/latest/userguide/creating-a-vpc.html)
-- [EKS network requirements](https://docs.aws.amazon.com/eks/latest/userguide/network-reqs.html)
-- [EKS cluster IAM role](https://docs.aws.amazon.com/eks/latest/userguide/cluster-iam-role.html)
-- [EKS node IAM role](https://docs.aws.amazon.com/eks/latest/userguide/create-node-role.html)
-- [AWS::EKS::Cluster](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-eks-cluster.html)
-- [AWS::EKS::Nodegroup](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-eks-nodegroup.html)
-- [AWS::Scheduler::Schedule](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-scheduler-schedule.html)
+### 3. statusを確認する
+
+```bash
+"$COMMON_EKS_DIR/scripts/status.sh"
+```
+
+期待結果:
+
+- CloudFormation stack: `udemy4-c010-common-20260724`
+- EKS cluster: `ACTIVE`
+- endpoint: private `true`、public `true`、public CIDRはCloudShellのexact `/32`
+- node group: `udemy4-c010-common-20260724-node`
+- `kubectl get nodes`: 1 nodeが`Ready`
+
+ここまで成功した後だけSection hands-onへ進みます。
+
+## CloudShell public IP変更時のrecovery
+
+CloudShellへ再接続してpublic IPv4が変わると、旧`/32`に限定されたpublic endpointへ現在sessionから到達できません。`API_PUBLIC_ACCESS_CIDR`を書き換えて検査を回避せず、common directoryで次を実行します。
+
+```bash
+"$COMMON_EKS_DIR/scripts/recover-cidr.sh"
+```
+
+このscriptは、先にexact guard stack、common stack ID/account/Region/tag、9個の固定parameter、EKS ARN/tag、旧stack outputとruntimeの唯一の非world `/32`、private/public endpointを照合します。その後、現在のCloudShell IPv4を取得し、CloudFormationの`ApiPublicAccessCidr`だけを新しいexact `/32`へ更新します。他parameterは`UsePreviousValue=true`で保持し、`0.0.0.0/0`、複数CIDR、未知parameter、ownership不一致、unstable stackはfail closedです。update完了後にstack output、runtime endpoint、kubectl contextを再照合します。
+
+deadline workflowはCloudShellのIPに依存しません。cleanup時だけLambdaをcommon VPCへattachし、AccessEntry groupとexact RBACでprivate endpointへ到達するため、session切断後もSection cleanup gateを省略しません。KubernetesがNamespaceへ自動付与する`kubernetes.io/metadata.name=udemy4-s4-logs`は必須system labelとして許可し、3個のownership label以外の追加user labelは拒否します。
+
+## Cleanup
+
+Section 4のREADMEに従ってSection namespaceとlog groupを先に削除します。その後、common EKSを削除します。
+
+```bash
+"$COMMON_EKS_DIR/scripts/delete.sh"
+```
+
+削除scriptはexact stack/account/Region/tagを再照合し、次をfail closedで確認します。
+
+1. common CloudFormation stackなし
+2. EKS clusterなし
+3. exact tagのEC2 instance、EBS volume、ENIなし
+4. EKS descriptionのENIなし
+5. `/aws/eks/udemy4-c010-common-20260724/` log groupなし
+6. すべてpassした後だけguard stack、Scheduler schedule、Step Functions、cleanup Lambda/roleを削除
+
+`create-stack`が失敗してcommon stackが`ROLLBACK_COMPLETE`、かつexact EKS clusterが不存在の場合だけ、failed-create recoveryへ分岐します。この分岐はSTS account、`ap-northeast-1`、固定stack name/ARN、exact 5 tags、固定9 parameterのkey/valueと唯一の非world CIDR、exact `ROLLBACK_COMPLETE`を照合します。削除済みresource由来のoutputs、current CIDR、kubectl、Kubernetes contextは要求しません。`UPDATE_ROLLBACK_COMPLETE`など他status、tag/parameter/ARN drift、または同名EKS clusterが存在する場合は削除せず停止します。failed stackを削除した後もEC2/EBS/ENI/CloudWatch/EKS residual queryをすべて実行し、guardを最後に削除します。
+
+`scripts/delete.sh`はSection 4のexact namespace `udemy4-s4-logs`、Job `s4-log-generator`、log group `/udemy4/c010/s4/20260725`の不存在を確認してからcommon stackを削除し、同じprocess内で`scripts/verify-cleanup.sh`を実行します。`scripts/verify-cleanup.sh`だけの単独実行はSection residual gateを引き継げないためfail closedで停止します。common残存があればguardを削除せず、AWS CLIのpermission、credential、network errorを「不存在」として扱いません。
+
+## Troubleshooting
+
+- `STS account does not equal AWS_ACCOUNT_ID`: accountを切り替え、`aws sts get-caller-identity`を再確認します。値を書き換えて回避しません。
+- `AWS_REGION ... ap-northeast-1`: ConsoleとCloudShell tabを東京へ切り替え、環境変数を再設定します。
+- `kubectl context`: `aws eks update-kubeconfig --region ap-northeast-1 --name udemy4-c010-common-20260724`を実行し、exact ARNを確認します。
+- `NodeCreationFailure`: Sectionへ進まず、guardを保持したままCloudFormationがexact `ROLLBACK_COMPLETE`になるまで待ち、`delete.sh`を実行します。clusterが不存在ならfailed-create recoveryがoutputs/kubectlなしでexact stackを削除し、残存確認後にguardを最後に削除します。他statusまたは同名clusterが残る場合はfail closedです。
+- `Cleanup verification failed closed`: 表示されたexact残存だけを調査し、検査を削除・skipしません。
+- fixed common stack `AlreadyExists`: scriptは既存stackをupdate/adoptしません。exact statusとownershipを確認し、作り直す場合はSection→common cleanupを完了してから新しいdeadlineでpreflightへ戻ります。CIDR driftだけは`scripts/recover-cidr.sh`を使います。
+- CloudShell session切断: `$HOME`内のpackageは同じRegionの次sessionでも残ります。`AWS_ACCOUNT_ID`などsession環境変数を再設定し、`scripts/recover-cidr.sh`で現在IPへのexact recoveryを行い、deadlineと現存resourceを再確認します。deadline到達済みならguard workflowとresource状態を確認し、並行して手動cleanupを開始しません。
+
+## 公式資料
+
+- [AWS CloudShell concepts: Region and storage](https://docs.aws.amazon.com/cloudshell/latest/userguide/working-with-aws-cloudshell.html)
+- [AWS CloudShell compute environment and pre-installed software](https://docs.aws.amazon.com/cloudshell/latest/userguide/vm-specs.html)
+- [Connect kubectl to EKS with kubeconfig](https://docs.aws.amazon.com/eks/latest/userguide/create-kubeconfig.html)
+- [EKS access policies and access entries](https://docs.aws.amazon.com/eks/latest/userguide/access-policies.html)
+- [Lambda access to VPC resources](https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html)
+- [EventBridge Scheduler starts Step Functions](https://docs.aws.amazon.com/step-functions/latest/dg/using-eventbridge-scheduler.html)

@@ -4,15 +4,15 @@
 
 ## 使い方
 
-```powershell
+```bash
 git clone https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson.git
 cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 ```
 
 1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。GitとPython 3.11以上があれば実行でき、AWSアカウントやクラスターは不要、追加のクラウド費用はありません。
 2. AWS環境を使う演習では、先に[前提条件](docs/prerequisites.md)と[コスト・クリーンアップ](docs/cost-and-cleanup.md)を確認します。
-3. [PC側の前提条件確認](scripts/verify_prereqs.ps1)を実行します。
-4. Section 4は、[EKS PodログをCloudWatch Logs / Logs Insightsで追う](labs/s4-cloudwatch-logs-insights/README.md)を入口にします。live routeにはPowerShell 7、AWS CLI v2、`kubectl`、作成・削除を許可されたAWSアカウントへの承認済み認証が必要です。同じcheckoutのcommon EKSを使い、Section scriptがnamespace `udemy4-s4-logs`、Job `s4-log-generator`、log group `/udemy4/c010/s4/20260725`、log stream `sample-workload`を作成し、Section cleanup scriptがそれらを削除・残存確認してからcommon cleanupを行います。
+3. 既存のlocal PowerShell教材を使うSectionでは、[PC側の前提条件確認](scripts/verify_prereqs.ps1)を実行します。
+4. Section 4は、[EKS PodログをCloudWatch Logs / Logs Insightsで追う](labs/s4-cloudwatch-logs-insights/README.md)を入口にします。既定環境はAWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBashです。local PowerShellは不要です。AWS CLI `2.12.3`以上、`kubectl`、`jq`、Python 3、preauthenticated console identity、Region別`$HOME` 1 GBの空きを確認します。同じcheckoutのcommon EKSを使い、Section scriptがnamespace `udemy4-s4-logs`、Job `s4-log-generator`、log group `/udemy4/c010/s4/20260725`、log stream `sample-workload`を作成し、Section cleanup scriptがそれらを削除・残存確認してからcommon cleanupを行います。
 5. Section 5は、[Pending / CrashLoopBackOffの初動切り分け](labs/s5-pod-resource-first-response/README.md)を入口にします。repository rootから`cd labs/s5-pod-resource-first-response`を実行し、そのREADMEに従って共通EKS基盤とSection scenarioを順に進めます。作成を許可された自分のAWSアカウントだけを使用し、約USD 0.97/6時間の基礎概算と変動要因を確認してから始めます。
 6. AWSを使えない場合は、Section 4またはSection 5の同じREADMEにあるfixture routeを実行します。Python 3.11以上だけで決定的に再現でき、AWSアカウントやクラスターは不要です。
 7. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
@@ -42,7 +42,7 @@ EKS、EC2、NAT Gateway、CloudWatch Logs、Container Insights、Load Balancer�
 - 削除対象にしてよいリソース
 - 残してよいログと残してはいけないログ
 
-`labs/common-eks/scripts/create.ps1`、Section 4の`apply-workload.ps1` / `publish-logs.ps1` / `cleanup-section.ps1`、Section 5のscenario/cleanup scriptは、明示された固定名の学習用リソースを作成・削除します。Section 4ではnamespace、Job、CloudWatch Logs log group、log streamが対象です。ほかの既存クラスター向け確認scriptとfixture routeは読み取り専用です。固定stackまたは固定Section resourceが既に存在する場合は更新や引き継ぎをせず停止します。
+`labs/common-eks/scripts/create.sh`、Section 4の`apply-workload.sh` / `publish-logs.sh` / `cleanup-section.sh`、Section 5のscenario/cleanup scriptは、明示された固定名の学習用リソースを作成・削除します。Section 4ではnamespace、Job、CloudWatch Logs log group、log streamが対象です。ほかの既存クラスター向け確認scriptとfixture routeは読み取り専用です。固定stackまたは固定Section resourceが既に存在する場合は更新や引き継ぎをせず停止します。
 
 Section 5のlive routeはPowerShell 7、AWS CLI v2、`kubectl`、承認済みAWS認証を前提にします。Pod imageは`busybox:1.36.1`と`python:3.12-alpine`へtag固定されています。EKS control plane versionはtemplateで固定せず、実行時に利用可能な標準サポート版が選ばれるため、作成直前にAWS公式情報と`kubectl`互換性を再確認してください。
 

@@ -2,38 +2,182 @@ from __future__ import annotations
 
 import pathlib
 import re
-import shutil
+import hashlib
+import json
+import shlex
 import subprocess
-import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def wsl_path(path: pathlib.Path) -> str:
+    resolved = path.resolve()
+    drive = resolved.drive.rstrip(":").lower()
+    return f"/mnt/{drive}/{resolved.as_posix().split(':', 1)[1].lstrip('/')}"
+
+
+def run_bash(body: str) -> subprocess.CompletedProcess[str]:
+    common = shlex.quote(wsl_path(ROOT / "scripts" / "common.sh"))
+    result = subprocess.run(
+        ["bash"],
+        input=f"set -euo pipefail\nsource {common}\n{body}\n".encode(),
+        capture_output=True,
+        check=False,
+    )
+    result.stdout = result.stdout.decode()
+    result.stderr = result.stderr.decode()
+    return result
 
 
 class LiveContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        cls.public_readme = (ROOT.parents[1] / "README.md").read_text(encoding="utf-8")
-        cls.common = (ROOT / "scripts/common.ps1").read_text(encoding="utf-8")
-        cls.scripts = "\n".join(
-            path.read_text(encoding="utf-8") for path in sorted((ROOT / "scripts").glob("*.ps1"))
+        cls.common = (ROOT / "scripts/common.sh").read_text(encoding="utf-8")
+        cls.scripts = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in sorted((ROOT / "scripts").glob("*.sh"))
+        }
+        cls.joined = "\n".join(cls.scripts.values())
+        cls.workload = (ROOT / "manifests/10-log-workload.yaml").read_text(
+            encoding="utf-8"
         )
-        cls.workload = (ROOT / "manifests/10-log-workload.yaml").read_text(encoding="utf-8")
 
-    def test_common_directory_and_region_are_exact(self) -> None:
-        self.assertIn("labs/common-eks", self.readme)
-        self.assertIn('$script:Region = "ap-northeast-1"', self.common)
-        self.assertIn('$script:ClusterName = "udemy4-c010-common-20260724"', self.common)
-
-    def test_external_binding_is_fail_closed(self) -> None:
+    def test_cloudshell_bash_is_the_only_learner_script_contract(self) -> None:
+        self.assertEqual(
+            {
+                "apply-workload.sh",
+                "cleanup-section.sh",
+                "common.sh",
+                "preflight.sh",
+                "publish-logs.sh",
+                "query-logs.sh",
+                "verify-cleanup.sh",
+            },
+            set(self.scripts),
+        )
+        self.assertFalse(list((ROOT / "scripts").glob("*.ps1")))
         for token in (
+            "AWS CloudShell",
+            "Bash",
+            "local PowerShellは不要",
+            "aws --version",
+            "kubectl version --client --output=json",
+            "aws sts get-caller-identity",
+            "ap-northeast-1",
+            "$HOME",
+            "1 GB",
+        ):
+            self.assertIn(token, self.readme)
+
+    def test_region_name_and_external_binding_are_exact(self) -> None:
+        for token in (
+            'REGION="ap-northeast-1"',
+            'CLUSTER_NAME="udemy4-c010-common-20260724"',
             "AWS_ACCOUNT_ID",
             "STS account does not equal AWS_ACCOUNT_ID",
             "kubectl context must equal the exact common cluster ARN",
+            "endpointPrivateAccess",
+            "endpointPublicAccess",
             "AccessDenied|Unauthorized|ExpiredToken|InvalidClientToken",
+            "assert_exact_stack_tags",
+            "assert_exact_eks_tags",
+            "assert_fixed_stack_outputs",
         ):
             self.assertIn(token, self.common)
+
+    def test_external_binding_rejects_stack_eks_and_output_drift(self) -> None:
+        stack_id = (
+            "arn:aws:cloudformation:ap-northeast-1:123456789012:"
+            "stack/udemy4-c010-common-20260724/example"
+        )
+        stack_tags = [
+            {"Key": "Course", "Value": "C010"},
+            {"Key": "ManagedBy", "Value": "udemy4"},
+            {"Key": "Purpose", "Value": "training"},
+            {
+                "Key": "TemplateContract",
+                "Value": "udemy4-c010-common-eks-v2-20260724",
+            },
+            {"Key": "WorkPackage", "Value": "c010-common-eks"},
+        ]
+        eks_tags = {
+            "Course": "C010",
+            "ManagedBy": "udemy4",
+            "Purpose": "training",
+            "TemplateContract": "udemy4-c010-common-eks-v2-20260724",
+            "WorkPackage": "c010-common-eks",
+            "aws:cloudformation:logical-id": "EksCluster",
+            "aws:cloudformation:stack-id": stack_id,
+            "aws:cloudformation:stack-name": "udemy4-c010-common-20260724",
+        }
+        outputs = [
+            {
+                "OutputKey": "ClusterName",
+                "OutputValue": "udemy4-c010-common-20260724",
+            },
+            {"OutputKey": "Region", "OutputValue": "ap-northeast-1"},
+            {
+                "OutputKey": "TemplateContract",
+                "OutputValue": "udemy4-c010-common-eks-v2-20260724",
+            },
+        ]
+        accepted = run_bash(
+            f"assert_exact_stack_tags {shlex.quote(json.dumps(stack_tags))}; "
+            f"assert_exact_eks_tags {shlex.quote(json.dumps(eks_tags))} "
+            f"{shlex.quote(stack_id)}; "
+            f"assert_fixed_stack_outputs {shlex.quote(json.dumps(outputs))}"
+        )
+        self.assertEqual(0, accepted.returncode, accepted.stderr)
+
+        bad_stack_tags = stack_tags + [{"Key": "Owner", "Value": "other"}]
+        bad_eks_tags = dict(eks_tags)
+        bad_eks_tags["aws:cloudformation:logical-id"] = "OtherCluster"
+        bad_outputs = [dict(item) for item in outputs]
+        bad_outputs[1]["OutputValue"] = "us-east-1"
+        for rejected in (
+            f"assert_exact_stack_tags {shlex.quote(json.dumps(bad_stack_tags))}",
+            (
+                f"assert_exact_eks_tags {shlex.quote(json.dumps(bad_eks_tags))} "
+                f"{shlex.quote(stack_id)}"
+            ),
+            f"assert_fixed_stack_outputs {shlex.quote(json.dumps(bad_outputs))}",
+        ):
+            result = run_bash(rejected)
+            self.assertNotEqual(0, result.returncode, rejected)
+
+    def test_version_gates_use_semantic_behavior(self) -> None:
+        accepted = run_bash(
+            "assert_aws_cli_minimum_text 'aws-cli/2.12.3 Python/3.11'; "
+            "assert_aws_cli_minimum_text 'aws-cli/2.20.0 Python/3.12'; "
+            "assert_kubectl_minor_compatible v1.31.1 1.30; "
+            "assert_kubectl_minor_compatible v1.29.8 1.30"
+        )
+        self.assertEqual(0, accepted.returncode, accepted.stderr)
+        for rejected in (
+            "assert_aws_cli_minimum_text 'aws-cli/2.12.2 Python/3.11'",
+            "assert_aws_cli_minimum_text 'aws-cli/1.99.99 Python/3.11'",
+            "assert_kubectl_minor_compatible v1.28.9 1.30",
+            "assert_kubectl_minor_compatible v2.30.0 1.30",
+        ):
+            result = run_bash(rejected)
+            self.assertNotEqual(0, result.returncode, rejected)
+
+    def test_runtime_endpoint_gate_rejects_cidr_drift_and_world_access(self) -> None:
+        accepted = run_bash(
+            "assert_runtime_endpoint_values true true 198.51.100.10/32 198.51.100.10/32"
+        )
+        self.assertEqual(0, accepted.returncode, accepted.stderr)
+        for rejected in (
+            "assert_runtime_endpoint_values false true 198.51.100.10/32 198.51.100.10/32",
+            "assert_runtime_endpoint_values true false 198.51.100.10/32 198.51.100.10/32",
+            "assert_runtime_endpoint_values true true 198.51.100.10/32 198.51.100.11/32",
+            "assert_runtime_endpoint_values true true 0.0.0.0/0 0.0.0.0/0",
+            "assert_runtime_endpoint_values true true 198.51.100.10/32 198.51.100.10/32 198.51.100.11/32",
+        ):
+            result = run_bash(rejected)
+            self.assertNotEqual(0, result.returncode, rejected)
 
     def test_workload_is_digest_pinned_and_emits_expected_levels(self) -> None:
         self.assertRegex(self.workload, r"busybox@sha256:[0-9a-f]{64}")
@@ -50,32 +194,43 @@ class LiveContractTests(unittest.TestCase):
             '"$K8S_NAMESPACE" "$K8S_POD_NAME"',
         ):
             self.assertIn(token, self.workload)
-        self.assertNotIn('"namespace":"training"', self.workload)
-        self.assertNotIn('"pod":"s4-log-generator"', self.workload)
-
-    def test_runtime_pod_and_workload_rows_are_fail_closed(self) -> None:
-        apply_script = (ROOT / "scripts/apply-workload.ps1").read_text(encoding="utf-8")
-        publish_script = (ROOT / "scripts/publish-logs.ps1").read_text(encoding="utf-8")
+        apply = self.scripts["apply-workload.sh"]
+        self.assertLess(
+            apply.index('manifests/00-namespace.yaml'),
+            apply.index("apply_exact_cleanup_rbac"),
+        )
+        self.assertLess(
+            apply.index("apply_exact_cleanup_rbac"),
+            apply.index('manifests/10-log-workload.yaml'),
+        )
         for token in (
-            "Expected exactly one Pod selected by the exact Job label",
-            '$_.kind -ceq "Job"',
-            "$_.uid -ceq $job.metadata.uid",
-            "Assert-WorkloadLogRows",
-            "$event.namespace -cne $script:Namespace",
-            "$event.pod -cne $PodName",
+            'resourceNames == ["s4-log-generator"]',
+            'resourceNames == ["udemy4-s4-logs"]',
+            "udemy4:c010:s4-cleanup",
+            "CleanupRbacManifest",
         ):
             self.assertIn(token, self.common)
-        for script in (apply_script, publish_script):
-            self.assertIn("$podName = Get-ExactJobPodName", script)
-            self.assertIn("Assert-WorkloadLogRows -Lines $lines -PodName $podName", script)
-            self.assertIn('Invoke-Kubectl @("logs", $podName, "-n", $Namespace)', script)
 
-    def test_query_scope_is_bounded(self) -> None:
-        query_script = (ROOT / "scripts/query-logs.ps1").read_text(encoding="utf-8")
-        self.assertIn("gt 900", query_script)
-        self.assertIn("--log-group-name", query_script)
-        self.assertIn("--start-time", query_script)
-        self.assertIn("--end-time", query_script)
+    def test_runtime_pod_and_six_rows_are_fail_closed(self) -> None:
+        for token in (
+            "Expected exactly one Pod selected by the exact Job label",
+            '.kind == "Job"',
+            ".uid == $uid",
+            "assert_workload_log_rows",
+            "select(length == 6)",
+            ".namespace == $namespace",
+            ".pod == $pod",
+        ):
+            self.assertIn(token, self.common)
+        for script_name in ("apply-workload.sh", "publish-logs.sh"):
+            script = self.scripts[script_name]
+            self.assertIn('pod_name="$(get_exact_job_pod_name)"', script)
+            self.assertIn("assert_workload_log_rows", script)
+            self.assertIn('kubectl logs "$pod_name" -n "$NAMESPACE"', script)
+
+    def test_query_scope_and_decoded_results_are_bounded(self) -> None:
+        query_script = self.scripts["query-logs.sh"]
+        self.assertIn("end_epoch - start_epoch <= 900", query_script)
         for query in (ROOT / "queries").glob("*.logs-insights"):
             text = query.read_text(encoding="utf-8")
             self.assertIn('namespace = "udemy4-s4-logs"', text)
@@ -83,119 +238,154 @@ class LiveContractTests(unittest.TestCase):
             self.assertIn("fields @timestamp, namespace, pod", text)
             self.assertIn("limit 20", text)
         for token in (
-            "$podName = Get-ExactJobPodName",
-            "Convert-LogsInsightsRows",
-            "$decoded.Count -ne $ExpectedCount",
-            "$row.namespace -cne $Namespace",
-            "$row.pod -cne $podName",
-            '"all-events" "$PSScriptRoot/../queries/all-events.logs-insights" 6',
-            '"errors" "$PSScriptRoot/../queries/errors.logs-insights" 2',
-            "decoded_results = $decoded",
+            "logs start-query",
+            "logs get-query-results",
+            '[[ "$status" == "Complete" ]]',
+            "decoded_results",
+            '"all-events"',
+            '"errors"',
+            "expected_count",
         ):
             self.assertIn(token, query_script)
 
-    def test_cleanup_checks_real_residuals(self) -> None:
-        cleanup = (ROOT / "scripts/cleanup-section.ps1").read_text(encoding="utf-8")
-        verify = (ROOT / "scripts/verify-cleanup.ps1").read_text(encoding="utf-8")
-        self.assertIn('@("delete", "namespace"', cleanup)
-        self.assertIn('@("get", "namespace", $Namespace, "-o", "json")', cleanup)
-        self.assertIn('@("get", "job", $JobName, "-n", $Namespace, "-o", "json")', cleanup)
-        for token in ("course", "section", '"managed-by"', "Namespace ownership label mismatch", "Job ownership label mismatch"):
-            self.assertIn(token, cleanup)
-        self.assertIn("delete-log-group", cleanup)
-        self.assertIn("list-tags-log-group", cleanup)
-        self.assertIn("describe-log-groups", verify)
-        self.assertIn("Cleanup verification failed closed", verify)
-
     def test_put_log_events_rejection_and_readback_are_checked(self) -> None:
-        publish = (ROOT / "scripts/publish-logs.ps1").read_text(encoding="utf-8")
+        publish = self.scripts["publish-logs.sh"]
         for token in (
-            "$putResponseText",
             "rejectedLogEventsInfo",
-            "get-log-events",
-            "readback did not return exactly six events",
-            "Compare-Object",
+            "logs get-log-events",
+            "CloudWatch readback did not return exactly six events",
+            "diff -u",
+            "end_epoch - start_epoch <= 900",
         ):
             self.assertIn(token, publish)
-        self.assertLess(
-            publish.index("rejectedLogEventsInfo"),
-            publish.index("all six Job log lines"),
+        predicate = (
+            '(has("rejectedLogEventsInfo") | not) '
+            'or (.rejectedLogEventsInfo == null)'
+        )
+        self.assertIn(predicate, publish)
+
+        def accepted(payload: dict) -> bool:
+            return (
+                "rejectedLogEventsInfo" not in payload
+                or payload["rejectedLogEventsInfo"] is None
+            )
+
+        self.assertTrue(accepted({}))
+        self.assertTrue(accepted({"rejectedLogEventsInfo": None}))
+        self.assertFalse(
+            accepted({"rejectedLogEventsInfo": {"tooNewLogEventStartIndex": 0}})
         )
 
-    def test_s4_and_common_paths_share_one_public_checkout(self) -> None:
-        self.assertIn("current checkout", self.readme)
-        self.assertIn("AWSとkubectlを実行するまでは", self.readme)
+    def test_evidence_directory_rejects_git_worktrees(self) -> None:
         for token in (
-            "$PUBLIC_WORKTREE",
-            "$ACTUAL_PUBLIC_ROOT",
-            "if (-not (Test-Path -LiteralPath $env:UDEMY4_PUBLIC))",
-            "$EXPECTED_COMMON_COMMIT",
-            "git -C $PUBLIC_WORKTREE diff --quiet $EXPECTED_COMMON_COMMIT -- labs/common-eks",
-            "$S4_LAB_DIR",
-            "$COMMON_EKS_DIR",
-            'Join-Path $COMMON_EKS_DIR "scripts/status.ps1"',
-            'Join-Path $S4_LAB_DIR "scripts/preflight.ps1"',
+            "LEARNER_REPO",
+            "EVIDENCE_DIR",
+            "must equal the exact Git worktree root",
+            "outside the learner Git worktree",
+            "must not be inside any Git worktree",
         ):
-            self.assertIn(token, self.readme)
-        self.assertNotIn("$ROOT_WORKTREE", self.readme)
-        self.assertNotIn("$S4_CANDIDATE_DIR", self.readme)
-        self.assertNotIn("cd ../", self.readme)
+            self.assertIn(token, self.common)
 
-    def test_public_root_summarizes_s4_mutations_and_prerequisites(self) -> None:
+    def test_cleanup_order_ownership_and_residuals_are_explicit(self) -> None:
+        cleanup = self.scripts["cleanup-section.sh"]
+        verify = self.scripts["verify-cleanup.sh"]
         for token in (
-            "PowerShell 7",
-            "AWS CLI v2",
-            "`kubectl`",
-            "承認済み認証",
-            "namespace `udemy4-s4-logs`",
-            "Job `s4-log-generator`",
-            "log group `/udemy4/c010/s4/20260725`",
-            "log stream `sample-workload`",
-            "`apply-workload.ps1`",
-            "`publish-logs.ps1`",
-            "`cleanup-section.ps1`",
+            'kubectl delete namespace "$NAMESPACE"',
+            "assert_exact_namespace_labels",
+            "assert_exact_log_group_tags",
+            "logs delete-log-group",
         ):
-            self.assertIn(token, self.public_readme)
+            self.assertIn(token, cleanup)
+        for token in (
+            "Section namespace remains",
+            "Section log group remains",
+            "Cleanup verification failed closed",
+        ):
+            self.assertIn(token, verify)
+        self.assertIn("必ずSectionを先に削除", self.readme)
+        self.assertIn("guardを最後", self.readme)
 
-    def test_evidence_directory_rejects_inside_worktree(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            base = pathlib.Path(temp)
-            root = base / "root"
-            public = base / "public"
-            outside = base / "evidence"
-            inside = root / "evidence"
-            for path in (root, public, outside, inside):
-                path.mkdir(parents=True, exist_ok=True)
-            command = (
-                f'. "{(ROOT / "scripts/common.ps1").as_posix()}"; '
-                f'$roots=@("{root.as_posix()}","{public.as_posix()}"); '
-                f'$insideRejected=$false; '
-                f'try {{ Assert-EvidenceOutsideWorktrees -EvidencePath "{inside.as_posix()}" -WorktreeRoots $roots }} '
-                f'catch {{ $insideRejected=$true }}; '
-                f'if (-not $insideRejected) {{ exit 2 }}; '
-                f'Assert-EvidenceOutsideWorktrees -EvidencePath "{outside.as_posix()}" -WorktreeRoots $roots'
+    def test_manual_cleanup_requires_complete_namespace_and_job_label_maps(self) -> None:
+        namespace = {
+            "metadata": {
+                "labels": {
+                    "course": "c010",
+                    "section": "s4",
+                    "managed-by": "udemy4",
+                    "kubernetes.io/metadata.name": "udemy4-s4-logs",
+                }
+            }
+        }
+        job = {
+            "metadata": {
+                "labels": {
+                    "course": "c010",
+                    "section": "s4",
+                    "managed-by": "udemy4",
+                }
+            }
+        }
+        accepted = run_bash(
+            f"assert_exact_namespace_labels {shlex.quote(json.dumps(namespace))} Namespace; "
+            f"assert_exact_namespace_labels {shlex.quote(json.dumps(job))} Job"
+        )
+        self.assertEqual(0, accepted.returncode, accepted.stderr)
+        bad_namespace = json.loads(json.dumps(namespace))
+        bad_namespace["metadata"]["labels"]["unexpected"] = "reject"
+        bad_job = json.loads(json.dumps(job))
+        bad_job["metadata"]["labels"]["unexpected"] = "reject"
+        for payload, kind in ((bad_namespace, "Namespace"), (bad_job, "Job")):
+            result = run_bash(
+                f"assert_exact_namespace_labels {shlex.quote(json.dumps(payload))} {kind}"
             )
-            powershell = shutil.which("pwsh") or shutil.which("powershell")
-            self.assertIsNotNone(powershell, "PowerShell is required for the containment regression test")
-            result = subprocess.run(
-                [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertNotEqual(0, result.returncode)
 
-    def test_readme_has_required_learner_contract(self) -> None:
+    def test_readme_has_required_learner_contract_and_not_run_boundary(self) -> None:
         for heading in (
             "## 前提条件",
             "## 手順",
+            "## 期待結果",
             "## Cleanup",
             "## Fixture fallback",
             "## Troubleshooting",
         ):
             self.assertIn(heading, self.readme)
-        for token in ("USD 0.76/GB", "USD 0.0076/GB", "15分以内", "6時間以内"):
+        for token in (
+            "USD 0.76/GB",
+            "USD 0.0076/GB",
+            "最大15分",
+            "最大6時間以内",
+            "WorkPackage=c010-common-eks",
+            "localのsyntax/fixture validationだけ",
+            "成功したlive AWS runとして扱わない",
+        ):
             self.assertIn(token, self.readme)
+
+    def test_learner_inventory_is_exact_and_current(self) -> None:
+        inventory = ROOT / "artifact-inventory.sha256"
+        records = [
+            line
+            for line in inventory.read_text(encoding="utf-8").splitlines()
+            if line and not line.startswith("#")
+        ]
+        self.assertEqual(18, len(records))
+        paths = [record.split("  ", 1)[1] for record in records]
+        self.assertEqual(paths, sorted(paths, key=lambda value: value.encode("utf-8")))
+        discovered = []
+        for path in ROOT.rglob("*"):
+            if not path.is_file():
+                continue
+            if (
+                path == inventory
+                or "__pycache__" in path.parts
+            ):
+                continue
+            discovered.append(path.relative_to(ROOT).as_posix())
+        self.assertEqual(paths, sorted(discovered, key=lambda value: value.encode("utf-8")))
+        for record in records:
+            expected, relative = record.split("  ", 1)
+            actual = hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+            self.assertEqual(expected, actual, relative)
 
 
 if __name__ == "__main__":

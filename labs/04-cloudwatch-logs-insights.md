@@ -12,7 +12,7 @@ CloudWatch LogsとLogs Insightsを使い、namespace、Pod名、時間帯でロ�
 
 ## Log group確認
 
-```powershell
+```bash
 aws logs describe-log-groups --region ap-northeast-1 --log-group-name-prefix "/aws/containerinsights/<cluster-name>" --query "logGroups[].logGroupName" --output table
 ```
 

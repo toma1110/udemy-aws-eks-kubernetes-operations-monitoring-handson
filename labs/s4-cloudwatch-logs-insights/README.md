@@ -1,208 +1,189 @@
-# EKS PodログをCloudWatch Logs / Logs Insightsで追う
+# Section 4: CloudWatch LogsとLogs Insights（AWS CloudShell / Bash）
 
-同じrepositoryに含まれる共通EKS基盤を使い、Section 4固有の短命なJobだけを追加します。Jobの実ログを`kubectl logs`で取得し、固定したCloudWatch Logs log groupへAWS CLIで送信した後、AWS ConsoleとLogs Insightsで対象を絞ります。
-
-共通基盤は同じpublic repositoryの`labs/common-eks/`です。Section 4はcluster、VPC、node group、IAMを作り直しません。
+対象は`s4-l2`「CloudWatch LogsでPodログを探す」と`s4-l3`「Logs Insightsの最初のクエリ」です。受講者向けの既定実行環境はAWS CloudShellのBashであり、local PowerShellは不要です。
 
 ## 目的
 
-- `s4-l2`: Region、log group、log stream、短い時間範囲を確認し、Pod由来の実ログをCloudWatch Logsで開く
-- `s4-l3`: Logs Insightsで対象log groupと15分以内の時間範囲を選び、namespace、Pod、levelで結果を読む
-- 実結果から言える範囲と、fixtureだけで確認した回帰条件を分ける
+1. `udemy4-s4-logs` namespaceのexact Job/PodからJSON log 6件を取得する
+2. fixed log group `/udemy4/c010/s4/20260725`へ同じ6件を送信し、readbackする
+3. Logs Insightsを15分以内のwindowへ限定し、all-events 6件、ERROR 2件をexact namespace/Podへ結合して確認する
+4. Section resourceをcommon EKSより先に削除し、namespace/Job/log groupの不存在を実APIで確認する
 
 ## 前提条件
 
-1. すでにこのrepositoryをclone済みなら、そのcurrent checkoutを使います。対象directoryがまだない場合だけcloneし、actual Git root、remote、common EKSの基準commitを検証してから2つのlab directoryを固定します。
+- AWS Management Consoleで承認済みexact accountへsign inし、Region selectorで東京`ap-northeast-1`を選んで通常のCloudShellを開いている
+- [common EKS README](../common-eks/README.md)のCloudShell preflight/create/statusが成功し、1 nodeが`Ready`
+- common resourceのruntime ownership tagが`WorkPackage=c010-common-eks`
+- AWS CLI `2.12.3`以上、`kubectl`、`jq`、Python 3がCloudShellで利用できる
+- packageとevidence用の空きがCloudShellのRegion別`$HOME` 1 GB内にある
+- common EKSを含む総利用時間は4時間を既定、最大6時間以内とする
 
-   ```powershell
-   $CURRENT_PUBLIC = (& git rev-parse --show-toplevel 2>$null).Trim()
-   if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (Join-Path $CURRENT_PUBLIC "labs/s4-cloudwatch-logs-insights"))) {
-       $env:UDEMY4_PUBLIC = $CURRENT_PUBLIC
-   }
-   elseif (-not $env:UDEMY4_PUBLIC) {
-       $env:UDEMY4_PUBLIC = "C:\work\udemy-aws-eks-kubernetes-operations-monitoring-handson"
-   }
+最初にpreauthenticated identity、Region、version、storageを確認します。account出力が承認済みexact accountと一致しない場合は停止してください。
 
-   if (-not (Test-Path -LiteralPath $env:UDEMY4_PUBLIC)) {
-       git clone https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson.git $env:UDEMY4_PUBLIC
-       if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
-   }
+```bash
+export AWS_REGION="ap-northeast-1"
+export AWS_DEFAULT_REGION="ap-northeast-1"
 
-   $PUBLIC_WORKTREE = (Resolve-Path -LiteralPath $env:UDEMY4_PUBLIC).Path
-   $ACTUAL_PUBLIC_ROOT = (Resolve-Path -LiteralPath ((& git -C $PUBLIC_WORKTREE rev-parse --show-toplevel).Trim())).Path
-   if ($LASTEXITCODE -ne 0 -or $ACTUAL_PUBLIC_ROOT -ne $PUBLIC_WORKTREE) {
-       throw "UDEMY4_PUBLIC must be the exact public repository root"
-   }
+aws --version
+kubectl version --client --output=json
+jq --version
+aws configure list
+df -h "$HOME"
 
-   $PUBLIC_ORIGIN = (& git -C $PUBLIC_WORKTREE remote get-url origin).Trim()
-   if ($PUBLIC_ORIGIN -notin @(
-       "https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson.git",
-       "git@github.com:toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson.git"
-   )) {
-       throw "Unexpected public repository origin"
-   }
+CALLER_ACCOUNT="$(aws sts get-caller-identity \
+  --region "$AWS_REGION" \
+  --query Account \
+  --output text \
+  --no-cli-pager)"
+printf 'Caller account: %s\n' "$CALLER_ACCOUNT"
 
-   $EXPECTED_COMMON_COMMIT = "ffead752a1dca7de743674ad057d6e2e457c6953"
-   $ACTUAL_COMMON_COMMIT = (& git -C $PUBLIC_WORKTREE log -1 --format=%H -- labs/common-eks).Trim()
-   git -C $PUBLIC_WORKTREE diff --quiet $EXPECTED_COMMON_COMMIT -- labs/common-eks
-   if ($LASTEXITCODE -ne 0 -or $ACTUAL_COMMON_COMMIT -ne $EXPECTED_COMMON_COMMIT) {
-       throw "common EKS files do not match the required commit"
-   }
-
-   $S4_LAB_DIR = Join-Path $PUBLIC_WORKTREE "labs/s4-cloudwatch-logs-insights"
-   $COMMON_EKS_DIR = Join-Path $PUBLIC_WORKTREE "labs/common-eks"
-   $S4_LAB_DIR = (Resolve-Path -LiteralPath $S4_LAB_DIR).Path
-   $COMMON_EKS_DIR = (Resolve-Path -LiteralPath $COMMON_EKS_DIR).Path
-   ```
-
-2. Section 4は`$S4_LAB_DIR`、common EKSは`$COMMON_EKS_DIR`です。どちらも同じexact public worktree内にあり、repository外へのrelative pathは使用しません。
-3. `$COMMON_EKS_DIR\README.md`に従い、exact account、`ap-northeast-1`、固定stack、cleanup deadlineを確認して共通基盤を作成済みであること。
-4. AWS CLI v2、kubectl、PowerShell 7、Python 3.11以上。
-5. 次の操作を行える権限。権限変更はこの演習に含みません。
-
-   - EKS clusterの参照と既存clusterへのkubectl access
-   - namespace / Jobの作成、参照、ログ取得、削除
-   - CloudWatch Logsのlog group / stream作成、retention設定、tag、`PutLogEvents`、`StartQuery`、`GetQueryResults`、log group削除
-
-6. 実行前に費用と削除順序を確認します。2026-07-25にAWS Price List APIで確認した東京Regionの標準log classは、custom log ingestionがUSD 0.76/GB、Logs Insights scanがUSD 0.0076/GBです。この演習は数KBのログと15分以内のqueryを2本だけ使うため、Section 4追加分の概算はUSD 0.01未満ですが、最低料金や税、無料枠は仮定しません。共通EKS基盤は別途課金されます。実行直前に[AWS CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)を再確認してください。
-
-## 固定する値
-
-外部scriptはすべて同じ値を再照合します。account IDは公開ファイルや提出物へ保存しません。
-
-```powershell
-$env:AWS_ACCOUNT_ID = "<exact-12-digit-account-id>"
-$env:EVIDENCE_DIR = "C:\udemy4-evidence\s4-cloudwatch-logs"
-New-Item -ItemType Directory -Force $env:EVIDENCE_DIR | Out-Null
-$env:EVIDENCE_DIR = (Resolve-Path -LiteralPath $env:EVIDENCE_DIR).Path
+# 表示accountを承認済みexact accountと照合してからbindする
+export AWS_ACCOUNT_ID="$CALLER_ACCOUNT"
 ```
 
-`EVIDENCE_DIR`はabsolute pathで、`$PUBLIC_WORKTREE`の内側には置けません。各external scriptはpublic worktreeを再解決し、evidence pathがその配下、または別のGit worktree内なら実行を拒否します。
+AWS CLIが`2.12.3`未満、`kubectl`がcluster versionと同じまたは前後1 minor以内でない、storageが不足している場合は実行しません。scriptはこれらをsemantic versionとして比較します。
 
-| 項目 | 固定値 |
-| --- | --- |
-| Region | `ap-northeast-1` |
-| common cluster | `udemy4-c010-common-20260724` |
-| namespace | `udemy4-s4-logs` |
-| Job | `s4-log-generator` |
-| log group | `/udemy4/c010/s4/20260725` |
-| log stream | `sample-workload` |
-| retention | 1日 |
-| 最大利用 | common EKS作成時に設定したcleanup deadlineまで、6時間以内 |
+## Cost warning
 
-同名namespace、Job、log group、log streamが既に存在する場合は停止し、既存resourceを採用・更新しません。
+このSectionはCloudWatch Logs ingestionとLogs Insights scanを追加します。2026-07-25にAWS Price List APIで確認した東京Regionの標準custom log ingestionはUSD 0.76/GB、Logs Insights scanはUSD 0.0076/GBです。6件の短いsample logは小容量ですが、common EKS、EC2、EBS、public IPv4の料金はcleanupまで続きます。料金は変わり得るため、実行直前に[CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)と[Amazon EKS pricing](https://aws.amazon.com/eks/pricing/)を確認してください。実請求はtax、discount、Free Tier、billing granularityで異なります。
+
+## Setup
+
+CloudShellでこのpublic repositoryをcloneし、Section 4 directoryへ移動します。すでにclone済みなら`git clone`は繰り返さず、既存checkoutで`cd`から始めます。`LEARNER_REPO`はこのpackageを含むexact Git worktree rootです。evidenceはGit worktree外の`$HOME`へ置きます。
+
+```bash
+cd "$HOME"
+if [[ ! -d udemy-aws-eks-kubernetes-operations-monitoring-handson ]]; then
+  git clone https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson.git
+fi
+cd "$HOME/udemy-aws-eks-kubernetes-operations-monitoring-handson/labs/s4-cloudwatch-logs-insights"
+
+export S4_DIR="$(pwd -P)"
+export LEARNER_REPO="$(git -C "$S4_DIR" rev-parse --show-toplevel)"
+export EVIDENCE_DIR="$HOME/eks-monitoring-evidence/s4-cloudwatch-logs"
+CLOUDSHELL_PUBLIC_IP="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+export API_PUBLIC_ACCESS_CIDR="${CLOUDSHELL_PUBLIC_IP}/32"
+mkdir -p "$EVIDENCE_DIR"
+chmod +x "$S4_DIR"/scripts/*.sh
+```
+
+`API_PUBLIC_ACCESS_CIDR`はcommon EKS stackの`ApiPublicAccessCidr` output、runtime clusterの唯一の`publicAccessCidrs`、現在のCloudShell public IPv4 `/32`のすべてと一致する必要があります。CloudShellへ再接続してIPが変わった場合はSectionを実行せず、common EKS directoryの`scripts/recover-cidr.sh`でexact ownership-bound updateを完了してから再確認します。`0.0.0.0/0`、複数CIDR、未知parameterやstackのadoptionは受理しません。
+
+`EVIDENCE_DIR`がGit worktree内、relative path、または別Git worktree内ならscriptは停止します。evidenceにはquery IDや結果が含まれます。account ID、ARN、credentialは保存しません。
 
 ## 手順
 
-### 1. common EKSを再確認する
+### 1. Section preflight
 
-それぞれのactual directoryにあるscriptをabsolute pathで実行します。
-
-```powershell
-& (Join-Path $COMMON_EKS_DIR "scripts/status.ps1")
-& (Join-Path $S4_LAB_DIR "scripts/preflight.ps1")
+```bash
+"$S4_DIR/scripts/preflight.sh"
 ```
 
-期待結果:
+期待結果: exact account、東京Region、common cluster ARN、common stackのexact 5 tags、EKSのCloudFormation system tagsを含むexact 8 tags、固定`ClusterName`/`Region`/`TemplateContract` outputs、private/restricted-public endpoint、kubectl contextが一致し、fixed namespaceとlog groupが存在しません。tag/output drift、欠落、余分なtagはmutation前にfail closedです。
 
-- STS accountが`AWS_ACCOUNT_ID`と一致する
-- Regionは`ap-northeast-1`
-- kubectl contextがexact cluster ARNに一致する
-- common stack / clusterのownership bindingが一致する
-- Section 4のnamespace、Job、log groupがまだ存在しない
+### 2. sample workloadを実行
 
-### 2. sample workloadを実行する
-
-```powershell
-& (Join-Path $S4_LAB_DIR "scripts/apply-workload.ps1")
-. (Join-Path $S4_LAB_DIR "scripts/common.ps1")
-$ACTUAL_POD = Get-ExactJobPodName
+```bash
+"$S4_DIR/scripts/apply-workload.sh"
 ```
 
-期待結果:
+scriptはnamespaceを新規作成した直後、common stack outputに結合されたleast-privilege RBACを適用・再読込検証してからJobを作ります。cleanup roleのAccessEntryはKubernetes group `udemy4:c010:s4-cleanup`だけを持ち、RBACはnamespaced Job `s4-log-generator`とcluster-scoped Namespace `udemy4-s4-logs`の`get/delete`だけを`resourceNames`で許可します。cluster-admin policyは使いません。その後、Job labelで選択されるPodがexactly 1で、そのPodがexact Job UIDのcontroller ownerを持つことを確認します。Pod logはexactly 6 JSON rowsで、全行の`namespace`と`pod`がruntime値に一致しなければ停止します。
 
-- Job `s4-log-generator`が`Complete`
-- `kubectl logs job/s4-log-generator -n udemy4-s4-logs`が6行のJSONを返す
-- scriptはlabel selectorで得たPodがexactly 1件で、runtime JobのUIDを持つcontroller owner referenceがexactly 1件であることを検証し、そのactual Pod名を`$ACTUAL_POD`へ保存する
-- 6行すべてに`timestamp`、`namespace`、`pod`、`level`、`message`、`request_id`があり、`namespace`は`udemy4-s4-logs`、`pod`はexact runtime `$ACTUAL_POD`と一致する。不一致行が1件でもあれば停止する
-- levelは`INFO` 3件、`WARN` 1件、`ERROR` 2件
+期待するlevel内訳:
 
-実際に手順を実行した場合だけ、ここで表示された出力を実clusterのCLI結果として扱います。結果が違う場合は先へ進まず、Pod events、image pull、Job statusを確認します。AWSとkubectlを実行するまでは、上記を実結果として扱いません。
+- `INFO`: 3
+- `WARN`: 1
+- `ERROR`: 2
 
-### 3. 実ログをCloudWatch Logsへ送る
+### 3. CloudWatch Logsへ送信し、readbackする（s4-l2）
 
-```powershell
-& (Join-Path $S4_LAB_DIR "scripts/publish-logs.ps1")
+```bash
+"$S4_DIR/scripts/publish-logs.sh"
 ```
 
-期待結果:
+作成対象:
 
-- fixed log groupとstreamが作成され、retentionが1日になる
-- 6件の実Jobログが`PutLogEvents`でacceptedになる
-- 実行時刻を含む15分以内のquery範囲が`query-window.json`へ保存される
+- log group: `/udemy4/c010/s4/20260725`
+- log stream: `sample-workload`
+- retention: 1 day
+- tags: `Course=C010`, `Section=s4`, `ManagedBy=udemy4`, `Purpose=training`
 
-### 4. CloudWatch Logs画面で確認する（s4-l2）
+`PutLogEvents`の`rejectedLogEventsInfo`がないこと、`GetLogEvents`がexactly 6件を返し、messageがPod log 6件と一致することを確認します。query windowは最初/最後のeventの前後2分、最大15分です。
 
-1. AWS Console右上のRegionを東京 `ap-northeast-1`にします。
-2. CloudWatch → Logs → Log groupsを開きます。
-3. `/udemy4/c010/s4/20260725`を選び、`sample-workload`を開きます。
-4. `query-window.json`のstart/endを含む短い時間範囲へ合わせます。
-5. JSON eventを1件開き、namespace、Pod、level、message、request IDを確認します。
+AWS Consoleでも東京Regionを再確認し、CloudWatch > Log groups > `/udemy4/c010/s4/20260725` > `sample-workload`を開きます。namespace、Pod名、時間帯を手がかりに6件が見えることを確認します。実Console結果はlive実行後にだけevidenceとして扱います。
 
-期待結果: CLIで送った6件が同じlog streamに表示されます。Console captureを教材へ使う場合はaccount ID、email、credential、不要なresource識別子をcrop/maskし、生成UIへ置き換えません。
+### 4. Logs Insights queryを実行（s4-l3）
 
-### 5. Logs Insights queryを実行する（s4-l3）
-
-```powershell
-& (Join-Path $S4_LAB_DIR "scripts/query-logs.ps1")
+```bash
+"$S4_DIR/scripts/query-logs.sh"
 ```
 
-scriptはexactly 1件のJob-owned Podを再解決し、`query-window.json`の15分以内の範囲とfixed log groupだけを使って`queries/all-events.logs-insights`と`queries/errors.logs-insights`を順に実行します。両queryは`namespace`をprojectし、actual namespace `udemy4-s4-logs`と、Jobが生成するactual Pod名に一致する`pod like /^s4-log-generator-/`で絞ります。AWS結果をfield/value行からdecodeし、全行の`namespace`と`pod`がruntime値に一致することを検証します。
+実行するquery:
 
-期待結果:
+- [queries/all-events.logs-insights](queries/all-events.logs-insights): exact namespaceとruntime Job Pod prefixへ限定し、6件
+- [queries/errors.logs-insights](queries/errors.logs-insights): 同じscopeで`ERROR`だけ2件
 
-- query statusが`Complete`
-- all-events queryはexactly 6件を時刻昇順で返す。6件以外ならscriptは失敗する
-- errors queryは`level = "ERROR"`をexactly 2件返す。2件以外または非ERROR行があればscriptは失敗する
-- 返された各eventの`namespace`は`udemy4-s4-logs`、`pod`はactual `$ACTUAL_POD`
-- `statistics.recordsMatched`と`statistics.bytesScanned`を含む実サービス結果がlocal evidenceへ保存される
+両queryともstatusが`Complete`でなければ失敗です。decoded rowのnamespace/Pod、ERROR queryのlevel、exact 6/2 countを検証し、raw results、decoded results、`recordsMatched`、`bytesScanned`を`EVIDENCE_DIR`へ保存します。
 
-ConsoleでもCloudWatch → Logs Insightsを開き、同じlog groupとcustom time rangeを選んでqueryを貼り付けます。query結果は初動の観測であり、同じrequest IDや近い時刻だけから原因を確定しません。
+Logs Insights Consoleで同じlog groupと保存済みwindowを選び、query fileの内容を実行すると、時系列、namespace、exact Podを画面上でも確認できます。Consoleやserviceの実結果を生成画像・fixtureで代用しません。
+
+## 期待結果
+
+| Check | Expected |
+| --- | --- |
+| Runtime Job Pod | exact Job label/UIDに結合した1 Pod |
+| Job log | 6 rows、runtime namespace/Pod一致 |
+| CloudWatch readback | 6 rows、message集合一致 |
+| all-events query | `Complete`、6 rows |
+| errors query | `Complete`、2 `ERROR` rows |
+| Query range | 0秒超、900秒以下 |
+| Evidence | raw/decoded resultとscan statistics。credential/account identityなし |
+
+このrevised CloudShell/Bash routeはlocalのsyntax/fixture validationだけを通過しており、成功したlive AWS runとして扱わないでください。
 
 ## Cleanup
 
-Section固有resourceを先に削除し、残存がないことを確認してから共通基盤を削除します。
+必ずSectionを先に削除し、その後common EKSを削除します。
 
-```powershell
-& (Join-Path $S4_LAB_DIR "scripts/cleanup-section.ps1")
-& (Join-Path $S4_LAB_DIR "scripts/verify-cleanup.ps1")
-& (Join-Path $COMMON_EKS_DIR "scripts/delete.ps1")
+```bash
+"$S4_DIR/scripts/cleanup-section.sh"
 ```
 
-`verify-cleanup.ps1`はnamespace、Job、fixed log groupをそれぞれ実APIで確認します。`ResourceNotFound`だけを不在として扱い、AccessDenied、credential、network、throttlingはcleanup成功にしません。common cleanupはCloudFormation、EKS、EC2、EBS、ENI、CloudWatch、cleanup guardの残存確認を行います。
+Section cleanupはnamespace/Jobのexact name・namespaceと完全なlabel map、log groupのexact tagsを確認してから削除します。Namespaceは3 ownership labelsとKubernetes mandatory `kubernetes.io/metadata.name=udemy4-s4-logs`だけ、Jobは3 ownership labelsだけを許可します。未知labelが1つでもあれば削除せず停止します。その後、namespace/Jobとfixed log groupの不存在を実APIで確認します。AccessDenied、expired credential、network errorを「不存在」として扱いません。
+
+次にcommon READMEのdirectoryへ移動し、common stackとguardを削除します。
+
+```bash
+export COMMON_EKS_DIR="../common-eks"
+"$COMMON_EKS_DIR/scripts/delete.sh"
+```
+
+common cleanupではCloudFormation、EKS、EC2、EBS、ENI、cluster log groupの残存queryがすべてpassした後だけguardを最後に削除します。deadline到達時はSchedulerが直接common stackを削除せず、Step Functionsがcleanup Lambdaを一時的にcommon VPCへattachし、AccessEntry groupとresourceName限定RBACでprivate endpointからexact Job/namespaceを削除・確認します。Namespaceの3 ownership labelsに加え、Kubernetesが必ず付ける`kubernetes.io/metadata.name=udemy4-s4-logs`だけをsystem labelとして許可し、未知user labelは拒否します。その後、Lambda detach、log group、common、residual、guardの順を維持します。`$HOME` 1 GBを圧迫しないよう、必要なevidenceをdownloadした後に不要なlocal copyを削除します。
 
 ## Fixture fallback
 
-AWS account、exact approval、権限、共通clusterがない場合はAWS操作を行いません。`fixtures/`と`analyze.py`はqueryの考え方を回帰確認するfallbackであり、CloudWatch Logsへの配信、Console、Logs Insights service、IAM、billing、実EKS挙動を証明しません。
+fixtureはfilter/schemaのsafe local regressionだけに使えます。CloudWatch service、actual account、IAM、EKS、料金、Console結果を証明しません。
 
-```powershell
-python -B (Join-Path $S4_LAB_DIR "analyze.py") --check
-python -B -m unittest discover -s (Join-Path $S4_LAB_DIR "tests") -v
+```bash
+python3 -B "$S4_DIR/analyze.py" --check
+python3 -B -m unittest discover -s "$S4_DIR/tests" -p 'test_*.py'
 ```
+
+live AWS実行ができない場合は、理由を記録してfixture確認までで停止し、live成功とは表現しません。
 
 ## Troubleshooting
 
-- `STS account does not equal AWS_ACCOUNT_ID`: credentialを変更せず、対象accountをCourse ownerの承認へ結合してから再実行します。
-- `kubectl context must equal`: common EKSの`status.ps1`からやり直します。substring一致や別clusterは許可しません。
-- `fixed resource already exists`: 削除・採用・更新せず停止します。ownershipを確認できない同名resourceには触れません。
-- Jobが`Complete`にならない: `kubectl describe job`と`kubectl get events -n udemy4-s4-logs --sort-by=.lastTimestamp`を確認します。
-- Consoleにログがない: Region、log group、stream、custom time rangeを順に確認し、CLIの`describe-log-streams`と`get-log-events`を使います。
-- queryが0件: `query-window.json`、選択log group、JSON field discovery、query statusを確認します。時間範囲を無制限に広げません。
-- cleanupが失敗: common EKSを先に消さず、Section 4のnamespaceとlog groupが不在になるまでexact errorを解消します。
+- `STS account does not equal AWS_ACCOUNT_ID`: Consoleのaccountを確認し、承認済みexact accountへ切り替えます。
+- Region error: Console selector、CloudShell tab、`AWS_REGION`、`AWS_DEFAULT_REGION`をすべて`ap-northeast-1`へ合わせます。
+- kubectl context error: common READMEに従い`aws eks update-kubeconfig --region ap-northeast-1 --name udemy4-c010-common-20260724`を実行します。
+- Pod count/owner error: resourceをadoptせず、Section cleanup後にpreflightからやり直します。
+- queryが`Complete`にならない: statusを保存して停止し、time range、log group、Region、permissionを確認します。
+- cleanup failure: exact residualを確認し、検査をskipしません。common cleanupはSection cleanup pass後にだけ行います。
+- manual cleanup ownership label mismatch: 追加labelを無視して削除しません。Namespace/Jobの作成元とownershipを調査し、exact mapへ戻す判断なしにlabelを削除・上書きしません。
+- CloudShell再接続: 同じRegionの`$HOME` fileは残りますがsession環境変数は再設定が必要です。STS、Region、deadline、resource statusを再確認します。
 
 ## 公式資料
 
-- [Send logs to a log group](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/Working-with-log-groups-and-streams.html)
-- [CloudWatch Logs Insights query syntax](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax.html)
-- [SOURCE command / start-query example](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/CWL_QuerySyntax-Source.html)
-- [CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)
+- [AWS CloudShell concepts](https://docs.aws.amazon.com/cloudshell/latest/userguide/working-with-aws-cloudshell.html)
+- [AWS CloudShell compute environment](https://docs.aws.amazon.com/cloudshell/latest/userguide/vm-specs.html)
+- [Connect kubectl to EKS with kubeconfig](https://docs.aws.amazon.com/eks/latest/userguide/create-kubeconfig.html)

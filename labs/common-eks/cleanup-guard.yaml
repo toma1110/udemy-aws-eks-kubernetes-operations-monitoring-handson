@@ -1,17 +1,831 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: External six-hour cleanup guard for the exact udemy4 C010 common EKS stack.
+Description: External deadline workflow for exact Section s4, common EKS, residual, then guard cleanup.
 
 Parameters:
   AccountId:
     Type: String
     AllowedPattern: "^[0-9]{12}$"
-    Description: Exact account already verified by create.ps1 against STS.
+    Description: Exact account already verified by create.sh against STS.
   CleanupScheduleExpression:
     Type: String
-    Description: Required UTC EventBridge Scheduler at() expression, validated by create.ps1 to be within six hours.
+    Description: Required UTC Scheduler at() expression, validated by create.sh to be within six hours.
     AllowedPattern: "^at\\(20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\)$"
 
 Resources:
+  CleanupHandlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: udemy4-c010-common-20260724-cleanup-handler-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+      Tags:
+        - {Key: Course, Value: C010}
+        - {Key: WorkPackage, Value: c010-common-eks}
+        - {Key: ManagedBy, Value: udemy4}
+        - {Key: Purpose, Value: training-cleanup-guard}
+        - {Key: TemplateContract, Value: udemy4-c010-cleanup-guard-v2-20260725}
+
+  CleanupHandlerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/udemy4-c010-common-20260724-cleanup-handler
+      RetentionInDays: 1
+      Tags:
+        - {Key: Course, Value: C010}
+        - {Key: WorkPackage, Value: c010-common-eks}
+        - {Key: ManagedBy, Value: udemy4}
+        - {Key: Purpose, Value: training-cleanup-guard}
+
+  CleanupHandler:
+    Type: AWS::Lambda::Function
+    DependsOn: CleanupHandlerLogGroup
+    Properties:
+      FunctionName: udemy4-c010-common-20260724-cleanup-handler
+      Description: Validates exact bindings and cleans Section s4 only through the private EKS endpoint.
+      Runtime: python3.13
+      Handler: index.handler
+      MemorySize: 256
+      Timeout: 300
+      Role: !GetAtt CleanupHandlerRole.Arn
+      Environment:
+        Variables:
+          EXPECTED_ACCOUNT: !Ref AccountId
+          SCHEDULE_EXPRESSION: !Ref CleanupScheduleExpression
+      Code:
+        ZipFile: |
+          import base64
+          import datetime
+          import ipaddress
+          import json
+          import os
+          import ssl
+          import urllib.error
+          import urllib.request
+
+          import boto3
+          from botocore.signers import RequestSigner
+
+          REGION = "ap-northeast-1"
+          ACCOUNT = os.environ["EXPECTED_ACCOUNT"]
+          SCHEDULE_EXPRESSION = os.environ["SCHEDULE_EXPRESSION"]
+          COMMON_STACK = "udemy4-c010-common-20260724"
+          CLUSTER = COMMON_STACK
+          NAMESPACE = "udemy4-s4-logs"
+          JOB = "s4-log-generator"
+          LOG_GROUP = "/udemy4/c010/s4/20260725"
+          CONTRACT = "udemy4-c010-deadline-cleanup-v2"
+          COMMON_TAGS = {
+              "Course": "C010",
+              "WorkPackage": "c010-common-eks",
+              "ManagedBy": "udemy4",
+              "Purpose": "training",
+              "TemplateContract": "udemy4-c010-common-eks-v2-20260724",
+          }
+          SECTION_LABELS = {"course": "c010", "section": "s4", "managed-by": "udemy4"}
+          LOG_TAGS = {
+              "Course": "C010",
+              "Section": "s4",
+              "ManagedBy": "udemy4",
+              "Purpose": "training",
+          }
+          FIXED_PARAMETERS = {
+              "ClusterName": CLUSTER,
+              "CourseTag": "C010",
+              "ManagedByTag": "udemy4",
+              "PurposeTag": "training",
+              "TemplateContractTag": COMMON_TAGS["TemplateContract"],
+              "WorkPackageTag": "c010-common-eks",
+          }
+
+          def fail(message):
+              raise RuntimeError(message)
+
+          def assert_trigger(event):
+              if event.get("contract") != CONTRACT:
+                  fail("Cleanup trigger contract mismatch.")
+              raw = SCHEDULE_EXPRESSION
+              if not (raw.startswith("at(") and raw.endswith(")")):
+                  fail("Cleanup deadline expression mismatch.")
+              deadline = datetime.datetime.fromisoformat(raw[3:-1] + "+00:00")
+              if datetime.datetime.now(datetime.timezone.utc) < deadline:
+                  fail("Cleanup handler rejects execution before the exact deadline.")
+
+          def exact_dict(items, key, value):
+              result = {}
+              for item in items:
+                  if item[key] in result:
+                      fail("Duplicate ownership key.")
+                  result[item[key]] = item[value]
+              return result
+
+          def validate_stack(stack):
+              stack_id = stack.get("StackId", "")
+              prefix = "arn:aws:cloudformation:%s:%s:stack/%s/" % (REGION, ACCOUNT, COMMON_STACK)
+              if not stack_id.startswith(prefix):
+                  fail("Common stack account, Region, or name mismatch.")
+              if exact_dict(stack.get("Tags", []), "Key", "Value") != COMMON_TAGS:
+                  fail("Common stack exact ownership tags mismatch.")
+              if stack.get("StackStatus") not in {"CREATE_COMPLETE", "UPDATE_COMPLETE"}:
+                  fail("Common stack is not in an allowed normal status.")
+              outputs = exact_dict(stack.get("Outputs", []), "OutputKey", "OutputValue")
+              required_outputs = {
+                  "ClusterName",
+                  "Region",
+                  "TemplateContract",
+                  "PublicSubnetAId",
+                  "PublicSubnetBId",
+                  "CleanupSecurityGroupId",
+              }
+              if not required_outputs.issubset(set(outputs)):
+                  fail("Common stack required output set mismatch.")
+              if (
+                  outputs["ClusterName"] != CLUSTER
+                  or outputs["Region"] != REGION
+                  or outputs["TemplateContract"] != COMMON_TAGS["TemplateContract"]
+              ):
+                  fail("Common stack output binding mismatch.")
+              return {
+                  "stack_id": stack_id,
+                  "subnet_ids": [outputs["PublicSubnetAId"], outputs["PublicSubnetBId"]],
+                  "security_group_ids": [outputs["CleanupSecurityGroupId"]],
+              }
+
+          def validate_failed_stack(stack):
+              stack_id = stack.get("StackId", "")
+              prefix = "arn:aws:cloudformation:%s:%s:stack/%s/" % (REGION, ACCOUNT, COMMON_STACK)
+              if (
+                  stack.get("StackName") != COMMON_STACK
+                  or not stack_id.startswith(prefix)
+                  or stack.get("StackStatus") != "ROLLBACK_COMPLETE"
+              ):
+                  fail("Failed-create stack account, Region, name, ARN, or status mismatch.")
+              if exact_dict(stack.get("Tags", []), "Key", "Value") != COMMON_TAGS:
+                  fail("Failed-create stack exact ownership tags mismatch.")
+              parameters = exact_dict(
+                  stack.get("Parameters", []), "ParameterKey", "ParameterValue"
+              )
+              if set(parameters) != {
+                  "ApiPublicAccessCidr",
+                  "AvailabilityZoneA",
+                  "AvailabilityZoneB",
+                  *FIXED_PARAMETERS,
+              }:
+                  fail("Failed-create stack exact parameter set mismatch.")
+              if any(parameters[key] != value for key, value in FIXED_PARAMETERS.items()):
+                  fail("Failed-create stack fixed parameter binding mismatch.")
+              cidr = parameters["ApiPublicAccessCidr"]
+              try:
+                  network = ipaddress.ip_network(cidr, strict=False)
+              except ValueError:
+                  fail("Failed-create stack CIDR parameter mismatch.")
+              if network.version != 4 or str(network) == "0.0.0.0/0":
+                  fail("Failed-create stack CIDR parameter mismatch.")
+              az_a = parameters["AvailabilityZoneA"]
+              az_b = parameters["AvailabilityZoneB"]
+              if (
+                  az_a == az_b
+                  or not az_a.startswith(REGION)
+                  or not az_b.startswith(REGION)
+              ):
+                  fail("Failed-create stack AZ parameter mismatch.")
+              return {"status": "ready", "stack_id": stack_id}
+
+          def validate_common(event):
+              stack = event["stack"]
+              cluster = event["cluster"]
+              stack_binding = validate_stack(stack)
+              stack_id = stack_binding["stack_id"]
+              expected_arn = "arn:aws:eks:%s:%s:cluster/%s" % (REGION, ACCOUNT, CLUSTER)
+              if cluster.get("arn") != expected_arn or cluster.get("name") != CLUSTER:
+                  fail("EKS cluster exact ARN binding mismatch.")
+              cluster_tags = cluster.get("tags", {})
+              expected_cluster_tags = dict(COMMON_TAGS)
+              expected_cluster_tags.update({
+                  "aws:cloudformation:logical-id": "EksCluster",
+                  "aws:cloudformation:stack-id": stack_id,
+                  "aws:cloudformation:stack-name": COMMON_STACK,
+              })
+              if cluster_tags != expected_cluster_tags:
+                  fail("EKS cluster exact ownership tags mismatch.")
+              config = cluster.get("resourcesVpcConfig", {})
+              cidrs = config.get("publicAccessCidrs", [])
+              if (
+                  config.get("endpointPrivateAccess") is not True
+                  or config.get("endpointPublicAccess") is not True
+                  or len(cidrs) != 1
+                  or cidrs[0] == "0.0.0.0/0"
+              ):
+                  fail("EKS endpoint binding must retain private access and one non-world public CIDR.")
+              if cluster.get("status") != "ACTIVE":
+                  return {"status": "pending"}
+              return {
+                  "status": "ready",
+                  **stack_binding,
+                  "endpoint": cluster["endpoint"],
+                  "certificate_authority": cluster["certificateAuthority"]["data"],
+              }
+
+          def token():
+              session = boto3.session.Session()
+              credentials = session.get_credentials()
+              sts = session.client("sts", region_name=REGION)
+              signer = RequestSigner(
+                  sts.meta.service_model.service_id,
+                  REGION,
+                  "sts",
+                  "v4",
+                  credentials,
+                  session.events,
+              )
+              params = {
+                  "method": "GET",
+                  "url": "https://sts.%s.amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15" % REGION,
+                  "body": {},
+                  "headers": {"x-k8s-aws-id": CLUSTER},
+                  "context": {},
+              }
+              url = signer.generate_presigned_url(
+                  params,
+                  region_name=REGION,
+                  expires_in=60,
+                  operation_name="",
+              )
+              encoded = base64.urlsafe_b64encode(url.encode("utf-8")).decode("utf-8").rstrip("=")
+              return "k8s-aws-v1." + encoded
+
+          def kube(event, method, path):
+              ca = base64.b64decode(event["certificate_authority"]).decode("utf-8")
+              context = ssl.create_default_context(cadata=ca)
+              request = urllib.request.Request(
+                  event["endpoint"] + path,
+                  data=b'{"propagationPolicy":"Foreground"}' if method == "DELETE" else None,
+                  headers={
+                      "Authorization": "Bearer " + token(),
+                      "Accept": "application/json",
+                      "Content-Type": "application/json",
+                  },
+                  method=method,
+              )
+              try:
+                  with urllib.request.urlopen(request, context=context, timeout=20) as response:
+                      payload = response.read()
+                      return json.loads(payload) if payload else {}
+              except urllib.error.HTTPError as error:
+                  if error.code == 404:
+                      return None
+                  raise
+
+          def assert_labels(obj, kind):
+              expected = dict(SECTION_LABELS)
+              if kind == "Namespace":
+                  expected["kubernetes.io/metadata.name"] = NAMESPACE
+              if obj.get("metadata", {}).get("labels", {}) != expected:
+                  fail("%s exact ownership labels mismatch." % kind)
+
+          def cleanup_section(event):
+              job_path = "/apis/batch/v1/namespaces/%s/jobs/%s" % (NAMESPACE, JOB)
+              namespace_path = "/api/v1/namespaces/%s" % NAMESPACE
+              job = kube(event, "GET", job_path)
+              if job is not None:
+                  assert_labels(job, "Job")
+                  kube(event, "DELETE", job_path)
+              namespace = kube(event, "GET", namespace_path)
+              if namespace is not None:
+                  assert_labels(namespace, "Namespace")
+                  kube(event, "DELETE", namespace_path)
+              if kube(event, "GET", job_path) is not None:
+                  return {"status": "pending"}
+              if kube(event, "GET", namespace_path) is not None:
+                  return {"status": "pending"}
+              return {"status": "ready", "section_gate": CONTRACT + ":kubernetes-absent"}
+
+          def validate_log_lookup(event):
+              exact = [
+                  item for item in event.get("log_groups", [])
+                  if item.get("logGroupName") == LOG_GROUP
+              ]
+              if len(exact) > 1:
+                  fail("Exact Section log group lookup was not unique.")
+              return {"status": "needs-tags" if exact else "absent"}
+
+          def validate_log_tags(event):
+              if event.get("tags") != LOG_TAGS:
+                  fail("Section log group exact ownership tags mismatch.")
+              return {"status": "owned"}
+
+          def handler(event, context):
+              assert_trigger(event)
+              action = event.get("action")
+              if action == "validate_common":
+                  return validate_common(event)
+              if action == "validate_stack":
+                  return {"status": "ready", **validate_stack(event["stack"])}
+              if action == "validate_failed_stack":
+                  return validate_failed_stack(event["stack"])
+              if action == "cleanup_section":
+                  return cleanup_section(event)
+              if action == "validate_log_lookup":
+                  return validate_log_lookup(event)
+              if action == "validate_log_tags":
+                  return validate_log_tags(event)
+              fail("Unknown or direct-delete cleanup action.")
+
+  CleanupStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: udemy4-c010-common-20260724-cleanup-state-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: states.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ExactCleanupWorkflowCalls
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:GetFunctionConfiguration
+                  - lambda:InvokeFunction
+                  - lambda:UpdateFunctionConfiguration
+                Resource: !GetAtt CleanupHandler.Arn
+              - Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DeleteStack
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AccountId}:stack/udemy4-c010-common-20260724/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AccountId}:stack/udemy4-c010-common-20260724-guard/*"
+              - Effect: Allow
+                Action: eks:DescribeCluster
+                Resource: !Sub "arn:${AWS::Partition}:eks:ap-northeast-1:${AccountId}:cluster/udemy4-c010-common-20260724"
+              - Effect: Allow
+                Action: logs:ListTagsForResource
+                Resource: !Sub "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:log-group:/udemy4/c010/s4/20260725"
+              - Effect: Allow
+                Action: logs:DeleteLogGroup
+                Resource: !Sub "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:log-group:/udemy4/c010/s4/20260725:*"
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeVolumes
+                  - logs:DescribeLogGroups
+                Resource: "*"
+      Tags:
+        - {Key: Course, Value: C010}
+        - {Key: WorkPackage, Value: c010-common-eks}
+        - {Key: ManagedBy, Value: udemy4}
+        - {Key: Purpose, Value: training-cleanup-guard}
+        - {Key: TemplateContract, Value: udemy4-c010-cleanup-guard-v2-20260725}
+
+  CleanupStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: udemy4-c010-common-20260724-cleanup
+      RoleArn: !GetAtt CleanupStateMachineRole.Arn
+      DefinitionString: !Sub |
+        {
+          "StartAt": "DescribeCommon",
+          "States": {
+            "DescribeCommon": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudformation:describeStacks",
+              "Parameters": {"StackName": "udemy4-c010-common-20260724"},
+              "ResultPath": "$.common",
+              "Catch": [{
+                "ErrorEquals": ["CloudFormation.ValidationErrorException"],
+                "ResultPath": "$.common_error",
+                "Next": "DescribeClusterWithoutStack"
+              }],
+              "Next": "DescribeCluster"
+            },
+            "DescribeCluster": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:eks:describeCluster",
+              "Parameters": {"Name": "udemy4-c010-common-20260724"},
+              "ResultPath": "$.eks",
+              "Catch": [{
+                "ErrorEquals": ["Eks.ResourceNotFoundException"],
+                "ResultPath": "$.eks_error",
+                "Next": "ValidateStackWithoutCluster"
+              }],
+              "Next": "ValidateCommon"
+            },
+            "ValidateStackWithoutCluster": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "Payload": {
+                  "action": "validate_failed_stack",
+                  "contract": "udemy4-c010-deadline-cleanup-v2",
+                  "stack.$": "$.common.Stacks[0]"
+                }
+              },
+              "ResultPath": "$.validation",
+              "Next": "SectionAlreadyAbsent"
+            },
+            "DescribeClusterWithoutStack": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:eks:describeCluster",
+              "Parameters": {"Name": "udemy4-c010-common-20260724"},
+              "ResultPath": "$.orphan_cluster",
+              "Catch": [{
+                "ErrorEquals": ["Eks.ResourceNotFoundException"],
+                "ResultPath": "$.orphan_error",
+                "Next": "SectionAlreadyAbsent"
+              }],
+              "Next": "DirectDeleteBypass"
+            },
+            "DirectDeleteBypass": {
+              "Type": "Fail",
+              "Error": "DirectDeleteBypass",
+              "Cause": "EKS exists without the exact common stack; namespace and Job absence cannot be inferred."
+            },
+            "ValidateCommon": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "Payload": {
+                  "action": "validate_common",
+                  "contract": "udemy4-c010-deadline-cleanup-v2",
+                  "stack.$": "$.common.Stacks[0]",
+                  "cluster.$": "$.eks.Cluster"
+                }
+              },
+              "ResultPath": "$.validation",
+              "Next": "CommonReady"
+            },
+            "CommonReady": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.validation.Payload.status",
+                "StringEquals": "ready",
+                "Next": "AttachCleanupHandler"
+              }],
+              "Default": "WaitForCommonActive"
+            },
+            "WaitForCommonActive": {"Type": "Wait", "Seconds": 30, "Next": "DescribeCommon"},
+            "AttachCleanupHandler": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:lambda:updateFunctionConfiguration",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "VpcConfig": {
+                  "SubnetIds.$": "$.validation.Payload.subnet_ids",
+                  "SecurityGroupIds.$": "$.validation.Payload.security_group_ids"
+                }
+              },
+              "ResultPath": "$.attach",
+              "Next": "WaitForAttach"
+            },
+            "WaitForAttach": {"Type": "Wait", "Seconds": 10, "Next": "GetAttachedHandler"},
+            "GetAttachedHandler": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:lambda:getFunctionConfiguration",
+              "Parameters": {"FunctionName": "${CleanupHandler.Arn}"},
+              "ResultPath": "$.handler_config",
+              "Next": "HandlerAttached"
+            },
+            "HandlerAttached": {
+              "Type": "Choice",
+              "Choices": [{
+                "And": [
+                  {"Variable": "$.handler_config.State", "StringEquals": "Active"},
+                  {"Variable": "$.handler_config.LastUpdateStatus", "StringEquals": "Successful"}
+                ],
+                "Next": "CleanupKubernetes"
+              }, {
+                "Variable": "$.handler_config.LastUpdateStatus",
+                "StringEquals": "Failed",
+                "Next": "HandlerUpdateFailed"
+              }],
+              "Default": "WaitForAttach"
+            },
+            "HandlerUpdateFailed": {
+              "Type": "Fail",
+              "Error": "HandlerVpcUpdateFailed",
+              "Cause": "The cleanup handler could not attach to the exact common VPC."
+            },
+            "CleanupKubernetes": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "Payload": {
+                  "action": "cleanup_section",
+                  "contract": "udemy4-c010-deadline-cleanup-v2",
+                  "endpoint.$": "$.validation.Payload.endpoint",
+                  "certificate_authority.$": "$.validation.Payload.certificate_authority"
+                }
+              },
+              "ResultPath": "$.section",
+              "Next": "KubernetesAbsent"
+            },
+            "KubernetesAbsent": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.section.Payload.status",
+                "StringEquals": "ready",
+                "Next": "DetachCleanupHandler"
+              }],
+              "Default": "WaitForKubernetes"
+            },
+            "WaitForKubernetes": {"Type": "Wait", "Seconds": 30, "Next": "CleanupKubernetes"},
+            "DetachCleanupHandler": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:lambda:updateFunctionConfiguration",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "VpcConfig": {"SubnetIds": [], "SecurityGroupIds": []}
+              },
+              "ResultPath": "$.detach",
+              "Next": "WaitForDetach"
+            },
+            "WaitForDetach": {"Type": "Wait", "Seconds": 10, "Next": "GetDetachedHandler"},
+            "GetDetachedHandler": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:lambda:getFunctionConfiguration",
+              "Parameters": {"FunctionName": "${CleanupHandler.Arn}"},
+              "ResultPath": "$.handler_config",
+              "Next": "HandlerDetached"
+            },
+            "HandlerDetached": {
+              "Type": "Choice",
+              "Choices": [{
+                "And": [
+                  {"Variable": "$.handler_config.State", "StringEquals": "Active"},
+                  {"Variable": "$.handler_config.LastUpdateStatus", "StringEquals": "Successful"},
+                  {"Variable": "$.handler_config.VpcConfig.VpcId", "StringEquals": ""}
+                ],
+                "Next": "DescribeSectionLog"
+              }, {
+                "Variable": "$.handler_config.LastUpdateStatus",
+                "StringEquals": "Failed",
+                "Next": "HandlerUpdateFailed"
+              }],
+              "Default": "WaitForDetach"
+            },
+            "SectionAlreadyAbsent": {
+              "Type": "Pass",
+              "Result": {
+                "Payload": {
+                  "status": "ready",
+                  "section_gate": "udemy4-c010-deadline-cleanup-v2:kubernetes-absent"
+                }
+              },
+              "ResultPath": "$.section",
+              "Next": "DescribeSectionLog"
+            },
+            "DescribeSectionLog": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudwatchlogs:describeLogGroups",
+              "Parameters": {"LogGroupNamePrefix": "/udemy4/c010/s4/20260725"},
+              "ResultPath": "$.section_logs",
+              "Next": "ValidateSectionLogLookup"
+            },
+            "ValidateSectionLogLookup": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "Payload": {
+                  "action": "validate_log_lookup",
+                  "contract": "udemy4-c010-deadline-cleanup-v2",
+                  "log_groups.$": "$.section_logs.LogGroups"
+                }
+              },
+              "ResultPath": "$.log_lookup",
+              "Next": "SectionLogPresent"
+            },
+            "SectionLogPresent": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.log_lookup.Payload.status",
+                "StringEquals": "needs-tags",
+                "Next": "GetSectionLogTags"
+              }],
+              "Default": "SectionGateReady"
+            },
+            "GetSectionLogTags": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudwatchlogs:listTagsForResource",
+              "Parameters": {
+                "ResourceArn": "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:log-group:/udemy4/c010/s4/20260725"
+              },
+              "ResultPath": "$.section_log_tags",
+              "Next": "ValidateSectionLogTags"
+            },
+            "ValidateSectionLogTags": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${CleanupHandler.Arn}",
+                "Payload": {
+                  "action": "validate_log_tags",
+                  "contract": "udemy4-c010-deadline-cleanup-v2",
+                  "tags.$": "$.section_log_tags.Tags"
+                }
+              },
+              "ResultPath": "$.log_tags_valid",
+              "Next": "DeleteSectionLog"
+            },
+            "DeleteSectionLog": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudwatchlogs:deleteLogGroup",
+              "Parameters": {"LogGroupName": "/udemy4/c010/s4/20260725"},
+              "ResultPath": "$.log_delete",
+              "Catch": [{
+                "ErrorEquals": ["CloudWatchLogs.ResourceNotFoundException"],
+                "ResultPath": "$.log_already_absent",
+                "Next": "DescribeSectionLog"
+              }],
+              "Next": "DescribeSectionLog"
+            },
+            "SectionGateReady": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.section.Payload.section_gate",
+                "StringEquals": "udemy4-c010-deadline-cleanup-v2:kubernetes-absent",
+                "Next": "CommonStackKnown"
+              }],
+              "Default": "MissingSectionGate"
+            },
+            "MissingSectionGate": {
+              "Type": "Fail",
+              "Error": "MissingSectionGate",
+              "Cause": "Common deletion is forbidden until exact Section resources are absent."
+            },
+            "CommonStackKnown": {
+              "Type": "Choice",
+              "Choices": [{
+                "Variable": "$.validation.Payload.stack_id",
+                "IsPresent": true,
+                "Next": "DeleteCommon"
+              }],
+              "Default": "VerifyInstances"
+            },
+            "DeleteCommon": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudformation:deleteStack",
+              "Parameters": {"StackName.$": "$.validation.Payload.stack_id"},
+              "ResultPath": "$.common_delete",
+              "Catch": [{
+                "ErrorEquals": ["CloudFormation.ValidationErrorException"],
+                "ResultPath": "$.common_already_absent",
+                "Next": "VerifyInstances"
+              }],
+              "Next": "WaitForCommonDelete"
+            },
+            "WaitForCommonDelete": {"Type": "Wait", "Seconds": 30, "Next": "PollCommonDelete"},
+            "PollCommonDelete": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudformation:describeStacks",
+              "Parameters": {"StackName.$": "$.validation.Payload.stack_id"},
+              "ResultPath": "$.common_poll",
+              "Catch": [{
+                "ErrorEquals": ["CloudFormation.ValidationErrorException"],
+                "ResultPath": "$.common_absent",
+                "Next": "VerifyInstances"
+              }],
+              "Next": "WaitForCommonDelete"
+            },
+            "VerifyInstances": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:describeInstances",
+              "Parameters": {
+                "Filters": [
+                  {"Name": "tag:Course", "Values": ["C010"]},
+                  {"Name": "tag:WorkPackage", "Values": ["c010-common-eks"]},
+                  {"Name": "tag:ManagedBy", "Values": ["udemy4"]},
+                  {"Name": "tag:Purpose", "Values": ["training"]},
+                  {"Name": "tag:TemplateContract", "Values": ["udemy4-c010-common-eks-v2-20260724"]},
+                  {"Name": "instance-state-name", "Values": ["pending", "running", "stopping", "stopped", "shutting-down"]}
+                ]
+              },
+              "ResultPath": "$.instances",
+              "Next": "InstancesAbsent"
+            },
+            "InstancesAbsent": {
+              "Type": "Choice",
+              "Choices": [{"Variable": "$.instances.Reservations[0]", "IsPresent": true, "Next": "WaitForResiduals"}],
+              "Default": "VerifyVolumes"
+            },
+            "VerifyVolumes": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:describeVolumes",
+              "Parameters": {
+                "Filters": [
+                  {"Name": "tag:Course", "Values": ["C010"]},
+                  {"Name": "tag:WorkPackage", "Values": ["c010-common-eks"]},
+                  {"Name": "tag:ManagedBy", "Values": ["udemy4"]},
+                  {"Name": "tag:Purpose", "Values": ["training"]},
+                  {"Name": "tag:TemplateContract", "Values": ["udemy4-c010-common-eks-v2-20260724"]}
+                ]
+              },
+              "ResultPath": "$.volumes",
+              "Next": "VolumesAbsent"
+            },
+            "VolumesAbsent": {
+              "Type": "Choice",
+              "Choices": [{"Variable": "$.volumes.Volumes[0]", "IsPresent": true, "Next": "WaitForResiduals"}],
+              "Default": "VerifyTaggedEnis"
+            },
+            "VerifyTaggedEnis": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:describeNetworkInterfaces",
+              "Parameters": {
+                "Filters": [
+                  {"Name": "tag:Course", "Values": ["C010"]},
+                  {"Name": "tag:WorkPackage", "Values": ["c010-common-eks"]},
+                  {"Name": "tag:ManagedBy", "Values": ["udemy4"]},
+                  {"Name": "tag:Purpose", "Values": ["training"]},
+                  {"Name": "tag:TemplateContract", "Values": ["udemy4-c010-common-eks-v2-20260724"]}
+                ]
+              },
+              "ResultPath": "$.tagged_enis",
+              "Next": "TaggedEnisAbsent"
+            },
+            "TaggedEnisAbsent": {
+              "Type": "Choice",
+              "Choices": [{"Variable": "$.tagged_enis.NetworkInterfaces[0]", "IsPresent": true, "Next": "WaitForResiduals"}],
+              "Default": "VerifyEksEnis"
+            },
+            "VerifyEksEnis": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:describeNetworkInterfaces",
+              "Parameters": {
+                "Filters": [{"Name": "description", "Values": ["Amazon EKS udemy4-c010-common-20260724"]}]
+              },
+              "ResultPath": "$.eks_enis",
+              "Next": "EksEnisAbsent"
+            },
+            "EksEnisAbsent": {
+              "Type": "Choice",
+              "Choices": [{"Variable": "$.eks_enis.NetworkInterfaces[0]", "IsPresent": true, "Next": "WaitForResiduals"}],
+              "Default": "VerifyClusterLogs"
+            },
+            "VerifyClusterLogs": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudwatchlogs:describeLogGroups",
+              "Parameters": {"LogGroupNamePrefix": "/aws/eks/udemy4-c010-common-20260724/"},
+              "ResultPath": "$.cluster_logs",
+              "Next": "ClusterLogsAbsent"
+            },
+            "ClusterLogsAbsent": {
+              "Type": "Choice",
+              "Choices": [{"Variable": "$.cluster_logs.LogGroups[0]", "IsPresent": true, "Next": "WaitForResiduals"}],
+              "Default": "ConfirmClusterAbsent"
+            },
+            "WaitForResiduals": {"Type": "Wait", "Seconds": 30, "Next": "VerifyInstances"},
+            "ConfirmClusterAbsent": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:eks:describeCluster",
+              "Parameters": {"Name": "udemy4-c010-common-20260724"},
+              "ResultPath": "$.unexpected_cluster",
+              "Catch": [{
+                "ErrorEquals": ["Eks.ResourceNotFoundException"],
+                "ResultPath": "$.cluster_absent",
+                "Next": "ConfirmSectionLogAbsent"
+              }],
+              "Next": "DirectDeleteBypass"
+            },
+            "ConfirmSectionLogAbsent": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudwatchlogs:describeLogGroups",
+              "Parameters": {"LogGroupNamePrefix": "/udemy4/c010/s4/20260725"},
+              "ResultPath": "$.final_section_logs",
+              "Next": "FinalSectionLogAbsent"
+            },
+            "FinalSectionLogAbsent": {
+              "Type": "Choice",
+              "Choices": [{"Variable": "$.final_section_logs.LogGroups[0]", "IsPresent": true, "Next": "MissingSectionGate"}],
+              "Default": "RemoveGuard"
+            },
+            "RemoveGuard": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudformation:deleteStack",
+              "Parameters": {"StackName": "${AWS::StackId}"},
+              "End": true
+            }
+          }
+        }
+      Tags:
+        - {Key: Course, Value: C010}
+        - {Key: WorkPackage, Value: c010-common-eks}
+        - {Key: ManagedBy, Value: udemy4}
+        - {Key: Purpose, Value: training-cleanup-guard}
+
   CleanupSchedulerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -28,34 +842,33 @@ Resources:
               ArnEquals:
                 aws:SourceArn: !Sub "arn:${AWS::Partition}:scheduler:ap-northeast-1:${AccountId}:schedule-group/default"
       Policies:
-        - PolicyName: DeleteOnlyExactCommonTrainingStack
+        - PolicyName: StartOnlyExactCleanupWorkflow
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: cloudformation:DeleteStack
-                Resource: !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AccountId}:stack/udemy4-c010-common-20260724/*"
+                Action: states:StartExecution
+                Resource: !Ref CleanupStateMachine
       Tags:
         - {Key: Course, Value: C010}
-        - {Key: Lab, Value: section-s5}
+        - {Key: WorkPackage, Value: c010-common-eks}
         - {Key: ManagedBy, Value: udemy4}
         - {Key: Purpose, Value: training-cleanup-guard}
-        - {Key: TemplateContract, Value: udemy4-c010-cleanup-guard-v1-20260724}
+        - {Key: TemplateContract, Value: udemy4-c010-cleanup-guard-v2-20260725}
 
   AutomaticCleanupSchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: udemy4-c010-common-20260724-guard-schedule
-      Description: Deletes only the exact short-lived common EKS stack while remaining external to it.
+      Description: Starts exact Section s4, common EKS, residual, then guard cleanup at the deadline.
       ScheduleExpression: !Ref CleanupScheduleExpression
       ScheduleExpressionTimezone: UTC
-      FlexibleTimeWindow:
-        Mode: "OFF"
+      FlexibleTimeWindow: {Mode: "OFF"}
       State: ENABLED
       Target:
-        Arn: arn:aws:scheduler:::aws-sdk:cloudformation:deleteStack
+        Arn: !Ref CleanupStateMachine
         RoleArn: !GetAtt CleanupSchedulerRole.Arn
-        Input: '{"StackName":"udemy4-c010-common-20260724"}'
+        Input: '{"contract":"udemy4-c010-deadline-cleanup-v2"}'
 
 Outputs:
   TargetStackName:
@@ -63,8 +876,14 @@ Outputs:
   Region:
     Value: !Ref AWS::Region
   TemplateContract:
-    Value: udemy4-c010-cleanup-guard-v1-20260724
+    Value: udemy4-c010-cleanup-guard-v2-20260725
   ScheduleName:
     Value: udemy4-c010-common-20260724-guard-schedule
   RoleName:
     Value: udemy4-c010-common-20260724-guard-role
+  CleanupRoleArn:
+    Value: !GetAtt CleanupHandlerRole.Arn
+  HandlerFunctionName:
+    Value: !Ref CleanupHandler
+  StateMachineArn:
+    Value: !Ref CleanupStateMachine
