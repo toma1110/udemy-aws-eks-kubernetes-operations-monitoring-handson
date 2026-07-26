@@ -327,7 +327,7 @@ get_exact_job_pod_name() {
 
 assert_workload_log_rows() {
   local file="$1" pod_name="$2"
-  jq -e --arg namespace "$NAMESPACE" --arg pod "$pod_name" '
+  jq -e --slurp --arg namespace "$NAMESPACE" --arg pod "$pod_name" '
     select(length == 6)
     | all(.[];
         (keys | sort) == (["level","message","namespace","pod","request_id","timestamp"] | sort)

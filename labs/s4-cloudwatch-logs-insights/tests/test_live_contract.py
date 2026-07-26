@@ -6,9 +6,91 @@ import hashlib
 import json
 import shlex
 import subprocess
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+JQ_STREAM_CONTRACT_DOUBLE = """#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+
+arguments = sys.argv[1:]
+variables = {}
+positionals = []
+slurp = False
+index = 0
+while index < len(arguments):
+    argument = arguments[index]
+    if argument in {"-e", "--exit-status"}:
+        index += 1
+    elif argument in {"-s", "--slurp"}:
+        slurp = True
+        index += 1
+    elif argument == "--arg" and index + 2 < len(arguments):
+        variables[arguments[index + 1]] = arguments[index + 2]
+        index += 3
+    elif argument.startswith("-"):
+        raise SystemExit(2)
+    else:
+        positionals.append(argument)
+        index += 1
+
+if not slurp or len(positionals) != 2:
+    raise SystemExit(2)
+
+program, input_path = positionals
+required_program_tokens = (
+    "select(length == 6)",
+    "all(.[];",
+    "(keys | sort)",
+    ".namespace == $namespace",
+    ".pod == $pod",
+    "type == \\"string\\" and length > 0",
+)
+if any(token not in program for token in required_program_tokens):
+    raise SystemExit(2)
+
+payload = pathlib.Path(input_path).read_text(encoding="utf-8")
+decoder = json.JSONDecoder()
+rows = []
+cursor = 0
+try:
+    while cursor < len(payload):
+        while cursor < len(payload) and payload[cursor].isspace():
+            cursor += 1
+        if cursor == len(payload):
+            break
+        row, cursor = decoder.raw_decode(payload, cursor)
+        rows.append(row)
+except (json.JSONDecodeError, UnicodeDecodeError):
+    raise SystemExit(1)
+
+expected_keys = {
+    "level",
+    "message",
+    "namespace",
+    "pod",
+    "request_id",
+    "timestamp",
+}
+valid = (
+    len(rows) == 6
+    and all(
+        isinstance(row, dict)
+        and set(row) == expected_keys
+        and row["namespace"] == variables.get("namespace")
+        and row["pod"] == variables.get("pod")
+        and all(
+            isinstance(row[field], str) and len(row[field]) > 0
+            for field in ("timestamp", "level", "message", "request_id")
+        )
+        for row in rows
+    )
+)
+raise SystemExit(0 if valid else 1)
+"""
 
 
 def wsl_path(path: pathlib.Path) -> str:
@@ -251,6 +333,7 @@ class LiveContractTests(unittest.TestCase):
             '.kind == "Job"',
             ".uid == $uid",
             "assert_workload_log_rows",
+            "--slurp",
             "select(length == 6)",
             ".namespace == $namespace",
             ".pod == $pod",
@@ -261,6 +344,80 @@ class LiveContractTests(unittest.TestCase):
             self.assertIn('pod_name="$(get_exact_job_pod_name)"', script)
             self.assertIn("assert_workload_log_rows", script)
             self.assertIn('kubectl logs "$pod_name" -n "$NAMESPACE"', script)
+
+    def test_workload_log_rows_slurps_valid_jsonl_and_rejects_invalid_streams(
+        self,
+    ) -> None:
+        pod_name = "s4-log-generator-regression"
+        valid_rows = [
+            {
+                "timestamp": f"2026-07-26T01:02:0{index}Z",
+                "namespace": "udemy4-s4-logs",
+                "pod": pod_name,
+                "level": "INFO",
+                "message": f"row-{index}",
+                "request_id": f"req-{index}",
+            }
+            for index in range(1, 7)
+        ]
+
+        def jsonl(rows: list[object]) -> str:
+            return (
+                "\n".join(
+                    json.dumps(row, ensure_ascii=False, separators=(",", ":"))
+                    for row in rows
+                )
+                + "\n"
+            )
+
+        invalid_streams: dict[str, str] = {
+            "five rows": jsonl(valid_rows[:5]),
+            "seven rows": jsonl(valid_rows + [dict(valid_rows[-1])]),
+            "single top-level array": json.dumps(valid_rows) + "\n",
+            "non-object row": jsonl(valid_rows[:5] + ["not-an-object"]),
+            "malformed sixth row": jsonl(valid_rows[:5]) + '{"timestamp":\n',
+        }
+        for label, field, value in (
+            ("missing key", "request_id", None),
+            ("extra key", "extra", "reject"),
+            ("wrong namespace", "namespace", "other"),
+            ("wrong pod", "pod", "other"),
+            ("empty message", "message", ""),
+            ("non-string level", "level", 1),
+        ):
+            rows = [dict(row) for row in valid_rows]
+            if label == "missing key":
+                del rows[2][field]
+            else:
+                rows[2][field] = value
+            invalid_streams[label] = jsonl(rows)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = pathlib.Path(temp_dir)
+            jq_path = temp_root / "jq"
+            jq_path.write_text(
+                JQ_STREAM_CONTRACT_DOUBLE, encoding="utf-8", newline="\n"
+            )
+            jq_path.chmod(0o755)
+            rows_path = temp_root / "workload-log-rows.jsonl"
+            bash_path = shlex.quote(wsl_path(temp_root))
+            rows_argument = shlex.quote(wsl_path(rows_path))
+            pod_argument = shlex.quote(pod_name)
+
+            def invoke(payload: str) -> subprocess.CompletedProcess[str]:
+                rows_path.write_text(payload, encoding="utf-8", newline="\n")
+                return run_bash(
+                    f"export PATH={bash_path}:$PATH\n"
+                    f"assert_workload_log_rows {rows_argument} {pod_argument}"
+                )
+
+            accepted = invoke(jsonl(valid_rows))
+            self.assertEqual(0, accepted.returncode, accepted.stderr)
+
+            for label, payload in invalid_streams.items():
+                with self.subTest(label=label):
+                    rejected = invoke(payload)
+                    self.assertNotEqual(0, rejected.returncode, rejected.stderr)
 
     def test_query_scope_and_decoded_results_are_bounded(self) -> None:
         query_script = self.scripts["query-logs.sh"]
@@ -375,16 +532,29 @@ class LiveContractTests(unittest.TestCase):
             self.assertNotEqual(0, result.returncode)
 
     def test_readme_has_required_learner_contract_and_not_run_boundary(self) -> None:
-        for heading in (
+        ordered_headings = (
+            "## 目的",
             "## 前提条件",
             "## 手順",
             "## 期待結果",
             "## Cleanup",
+            "## コストと安全上の注意",
             "## Fixture fallback",
             "## Troubleshooting",
-        ):
+            "## 安全設計の補足",
+            "## 公式資料",
+        )
+        for heading in ordered_headings:
             self.assertIn(heading, self.readme)
+        positions = [self.readme.index(heading) for heading in ordered_headings]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(8, self.readme.count("ここまでの成功"))
         for token in (
+            "このハンズオンでは",
+            "Namespace（名前空間）",
+            "Job（ジョブ）",
+            "log group（ロググループ）",
+            "Logs Insights:",
             "USD 0.76/GB",
             "USD 0.0076/GB",
             "最大15分",
@@ -394,6 +564,20 @@ class LiveContractTests(unittest.TestCase):
             "成功したlive AWS runとして扱わない",
         ):
             self.assertIn(token, self.readme)
+
+        navigation_tokens = (
+            'export LEARNER_REPO="$(git rev-parse --show-toplevel)"',
+            'cd "$LEARNER_REPO/labs/s4-cloudwatch-logs-insights"',
+            "test -f scripts/preflight.sh",
+            "test -f queries/all-events.logs-insights",
+            'export S4_DIR="$(pwd -P)"',
+        )
+        for token in navigation_tokens:
+            self.assertIn(token, self.readme)
+        navigation_positions = [
+            self.readme.index(token) for token in navigation_tokens
+        ]
+        self.assertEqual(navigation_positions, sorted(navigation_positions))
 
     def test_learner_inventory_is_exact_and_current(self) -> None:
         inventory = ROOT / "artifact-inventory.sha256"
