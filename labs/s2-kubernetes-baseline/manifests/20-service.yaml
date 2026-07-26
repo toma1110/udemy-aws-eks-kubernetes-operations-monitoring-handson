@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: baseline-web
+  namespace: udemy4-c010-s2-baseline
+  labels:
+    app.kubernetes.io/name: baseline-web
+    app.kubernetes.io/part-of: udemy4-c010
+    app.kubernetes.io/managed-by: udemy4
+    udemy4.example/lab: s2-baseline
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: baseline-web
+    udemy4.example/lab: s2-baseline
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

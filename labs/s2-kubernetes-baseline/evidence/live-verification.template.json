@@ -1,0 +1,31 @@
+{
+  "schema": "udemy-s2-live-verification-evidence-v1",
+  "section_id": "s2",
+  "checked_at": null,
+  "common_foundation_commit": "554b2887e4c2750a57f2cd5264540b6accab95ab",
+  "common_foundation_tree_oid": "4596f883d7d12196c39c15c68da0d4f48ab5c654",
+  "execution_environment": {
+    "kind": "AWS CloudShell Bash",
+    "region": "ap-northeast-1",
+    "identity_binding_redacted": true,
+    "account_sha256": null,
+    "principal_arn_sha256": null
+  },
+  "section_observations": {
+    "namespace": "udemy4-c010-s2-baseline",
+    "owned_pod_count": null,
+    "pod_phase": null,
+    "pod_ready": null,
+    "deployment_ready_replicas": null,
+    "service_endpoint_count": null,
+    "endpoint_bound_to_pod": null,
+    "log_contains_baseline_started": null,
+    "log_contains_baseline_heartbeat": null
+  },
+  "cleanup": {
+    "section_namespace_absent": false,
+    "common_cleanup_verified": false
+  },
+  "result": "not-run",
+  "not_run_reason": "Template only. Populate solely from real AWS CloudShell, AWS CLI, and kubectl results."
+}

@@ -9,7 +9,7 @@ git clone https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monito
 cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 ```
 
-1. Section 2は、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)から始めます。GitとPython 3.11以上があれば実行でき、AWSアカウントやクラスターは不要、追加のクラウド費用はありません。
+1. Section 2は、[共通EKS上でKubernetes監視の基礎を確認する](labs/s2-kubernetes-baseline/README.md)から始めます。既定環境は東京RegionのAWS CloudShell Bashです。AWSを使わない補助練習として、[固定データで行うKubernetes初動診断](labs/s2-kubernetes-initial-triage/README.md)も残しています。
 2. AWS環境を使う演習では、先に[前提条件](docs/prerequisites.md)と[コスト・クリーンアップ](docs/cost-and-cleanup.md)を確認します。
 3. 既存のlocal PowerShell教材を使うSectionでは、[PC側の前提条件確認](scripts/verify_prereqs.ps1)を実行します。
 4. Section 4は、[EKS PodログをCloudWatch Logs / Logs Insightsで追う](labs/s4-cloudwatch-logs-insights/README.md)を入口にします。既定環境はAWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBashです。local PowerShellは不要です。AWS CLI `2.12.3`以上、`kubectl`、`jq`、Python 3、preauthenticated console identity、Region別`$HOME` 1 GBの空きを確認します。同じcheckoutのcommon EKSを使い、Section scriptがnamespace `udemy4-s4-logs`、Job `s4-log-generator`、log group `/udemy4/c010/s4/20260725`、log stream `sample-workload`を作成し、Section cleanup scriptがそれらを削除・残存確認してからcommon cleanupを行います。
@@ -21,8 +21,8 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 
 | 講義 | 演習 | ファイル |
 | --- | --- | --- |
-| s2-l3 | `kubectl get`に対応する固定データで全体を見る | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
-| s2-l4 | `describe`、`logs`、eventsに対応する固定データで深掘りする | [labs/s2-kubernetes-initial-triage/README.md](labs/s2-kubernetes-initial-triage/README.md) |
+| s2-l3 | 共通EKS上のbaseline workloadを`kubectl get`で確認する | [labs/s2-kubernetes-baseline/README.md](labs/s2-kubernetes-baseline/README.md) |
+| s2-l4 | 実Podを`describe`、`logs`、eventsで深掘りする | [labs/s2-kubernetes-baseline/README.md](labs/s2-kubernetes-baseline/README.md) |
 | s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
 | s4-l2 / s4-l3 | 実EKS JobログをCloudWatch Logsへ送り、Logs Insightsで絞る。AWSを使えない場合はfixtureで回帰確認する | [labs/s4-cloudwatch-logs-insights/README.md](labs/s4-cloudwatch-logs-insights/README.md) |
 | s5-l3 / s5-l4 | 短命なEKS基盤でPendingとCrashLoopBackOffを調べ、AWSを使えない場合は固定データで同じ初動観点を練習する | [labs/s5-pod-resource-first-response/README.md](labs/s5-pod-resource-first-response/README.md) |
