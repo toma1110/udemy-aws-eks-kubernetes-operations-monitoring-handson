@@ -85,7 +85,6 @@ class CommonEksContractTests(unittest.TestCase):
         for token in (
             "AWS CloudShell",
             "Bash",
-            "local PowerShellは不要",
             "aws --version",
             "kubectl version --client --output=json",
             "aws sts get-caller-identity",
@@ -94,6 +93,7 @@ class CommonEksContractTests(unittest.TestCase):
             "1 GB",
         ):
             self.assertIn(token, readme)
+        self.assertNotIn("PowerShell", readme)
 
     def test_template_parses_and_has_required_resources(self):
         resources = self.template["Resources"]
@@ -1136,17 +1136,16 @@ class CommonEksContractTests(unittest.TestCase):
         for token in (
             "4時間",
             "最大6時間",
-            "約USD 0.97",
-            "実請求",
+            "EKS control plane",
+            "t3.medium",
+            "20 GiB gp3",
+            "実際の請求額",
             "scripts/delete.sh",
-            "scripts/verify-cleanup.sh",
             "AWS_ACCOUNT_ID",
-            "Section 4",
-            "Section 5",
-            "labs/s4-cloudwatch-logs-insights/scripts/cleanup-section.sh",
-            "labs/s5-pod-resource-first-response/scripts/cleanup-section.sh",
-            "s4とs5両方の残存gate",
-            "guardを最後",
+            "Section 2",
+            "labs/s2-kubernetes-baseline/scripts/cleanup-section.sh",
+            "Sectionのリソースがないこと",
+            "cleanup guardを残したまま",
         ):
             self.assertIn(token, readme)
         urls = re.findall(r"https://[^)]+", readme)

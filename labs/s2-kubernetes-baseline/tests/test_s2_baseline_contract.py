@@ -107,7 +107,8 @@ class S2BaselineContractTest(unittest.TestCase):
             "cleanup-section.sh",
             "delete-common-after-s2.sh",
             "料金",
-            "NotFound",
+            "Namespaceがないことを正常に確認できた場合だけ成功",
+            "確認できない結果は成功として扱いません",
         ):
             self.assertIn(token, text)
 
