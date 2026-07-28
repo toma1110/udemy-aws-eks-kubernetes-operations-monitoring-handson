@@ -93,7 +93,19 @@ class CommonEksContractTests(unittest.TestCase):
             "1 GB",
         ):
             self.assertIn(token, readme)
-        self.assertNotIn("PowerShell", readme)
+        for internal_term in (
+            "runtime ownership",
+            "exact workflow",
+            "atomic",
+            "ownership-bound",
+            "Scheduler",
+            "Step Functions",
+            "Lambda",
+            "RBAC",
+            "fail closed",
+            "fail-closed",
+        ):
+            self.assertNotIn(internal_term, readme)
 
     def test_template_parses_and_has_required_resources(self):
         resources = self.template["Resources"]
@@ -1136,16 +1148,14 @@ class CommonEksContractTests(unittest.TestCase):
         for token in (
             "4時間",
             "最大6時間",
-            "EKS control plane",
-            "t3.medium",
-            "20 GiB gp3",
-            "実際の請求額",
+            "約USD 0.97",
+            "実請求",
             "scripts/delete.sh",
             "AWS_ACCOUNT_ID",
-            "Section 2",
-            "labs/s2-kubernetes-baseline/scripts/cleanup-section.sh",
-            "Sectionのリソースがないこと",
-            "cleanup guardを残したまま",
+            "Section 4",
+            "Section 5を実行した場合",
+            '"$S5_DIR/scripts/cleanup-section.sh"',
+            "Section 5だけを実行した受講者がSection 4のcleanup commandを実行する必要はありません",
         ):
             self.assertIn(token, readme)
         urls = re.findall(r"https://[^)]+", readme)

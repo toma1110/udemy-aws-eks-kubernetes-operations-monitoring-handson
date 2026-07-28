@@ -78,8 +78,37 @@ class DeployableLabTests(unittest.TestCase):
     def test_readme_orders_section_before_common_cleanup(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
         self.assertLess(readme.index('scripts/cleanup-section.sh"'), readme.index('scripts/delete.sh"'))
-        self.assertIn("fixtureは合成データ", readme)
         self.assertIn("実請求", readme)
+
+    def test_readme_is_learner_first_and_links_to_the_exact_lab(self):
+        readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson/"
+            "tree/main/labs/s5-pod-resource-first-response",
+            readme,
+        )
+        for internal_term in ("受講者向け既定環境", "固定fixture", "回帰fallback"):
+            with self.subTest(internal_term=internal_term):
+                self.assertNotIn(internal_term, readme)
+        self.assertLess(readme.index("## 1. CloudShellを開く"), readme.index("## 2. 共通EKS環境を作る"))
+
+    def test_readme_bootstraps_or_safely_reuses_the_public_repository(self):
+        readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
+        required = (
+            'export HANDSON_REPO="$HOME/udemy-aws-eks-kubernetes-operations-monitoring-handson"',
+            'git clone "$HANDSON_URL" "$HANDSON_REPO"',
+            'git -C "$HANDSON_REPO" remote get-url origin',
+            'git -C "$HANDSON_REPO" status --porcelain',
+            'git -C "$HANDSON_REPO" pull --ff-only',
+            'cd "$HANDSON_REPO/labs/s5-pod-resource-first-response"',
+        )
+        for command in required:
+            with self.subTest(command=command):
+                self.assertIn(command, readme)
+        self.assertLess(
+            readme.index('cd "$HANDSON_REPO/labs/s5-pod-resource-first-response"'),
+            readme.index("cd ../common-eks"),
+        )
 
     def test_cloudshell_bash_is_the_only_learner_command_environment(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")

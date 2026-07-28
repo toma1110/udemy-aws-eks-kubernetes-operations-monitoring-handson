@@ -183,22 +183,21 @@ class AnalyzeTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 json.loads(path.read_text(encoding="utf-8"))
 
-    def test_hybrid_readme_has_live_and_deterministic_routes(self):
+    def test_readme_has_one_cloudshell_learning_route(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
-        self.assertIn("Route A: 既存EKSクラスタを読み取り専用で調べる", readme)
-        self.assertIn("Route B: fixtureで決定的に調べる", readme)
-        self.assertIn("権限やデータがないことは演習の失敗ではありません", readme)
-        self.assertIn("python3 analyze.py --check", readme)
+        self.assertIn("コース共通のCloudFormationテンプレートで作成したEKSクラスタ", readme)
+        self.assertIn("AWS Management Console", readme)
+        self.assertIn("AWS CloudShell", readme)
+        self.assertNotIn("Route A", readme)
+        self.assertNotIn("Route B", readme)
 
-    def test_live_route_requires_target_and_read_only_commands(self):
+    def test_investigation_steps_use_exact_read_only_commands(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
         required = [
-            "kubectl config current-context",
-            "kubectl config get-contexts",
-            "get pods -n <namespace> -o wide",
-            "describe pod <pod> -n <namespace>",
-            "logs <pod> -n <namespace> --previous --tail=100",
-            "get events -n <namespace>",
+            "kubectl get pods -n udemy4-c010-s5-20260724 -o wide",
+            "kubectl describe pod udemy4-c010-s5-20260724-pending-capacity",
+            "kubectl logs udemy4-c010-s5-20260724-crashloop-app",
+            "kubectl get events -n udemy4-c010-s5-20260724",
         ]
         for command in required:
             with self.subTest(command=command):
@@ -229,15 +228,14 @@ class AnalyzeTests(unittest.TestCase):
             readme,
         )
         self.assertIn("IAM", readme)
-        self.assertIn("Kubernetes RBAC", readme)
-        self.assertIn("Container Insightsが未設定", readme)
+        self.assertIn("権限を変更せず", readme)
 
-    def test_cost_and_cleanup_do_not_claim_existing_resources_are_free(self):
+    def test_cost_and_cleanup_cover_the_shared_environment(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
-        self.assertIn("既存料金", readme)
-        self.assertIn("読み取り手順そのものによる新規リソース費用は発生しません", readme)
-        self.assertIn("クラウド側のクリーンアップはありません", readme)
-        self.assertIn("既存cluster、workload、CloudWatch設定", readme)
+        self.assertIn("約USD 0.97/6時間", readme)
+        self.assertIn("実請求", readme)
+        self.assertIn('"$S5_DIR/scripts/cleanup-section.sh"', readme)
+        self.assertIn('"$COMMON_EKS_DIR/scripts/delete.sh"', readme)
 
 
 if __name__ == "__main__":
