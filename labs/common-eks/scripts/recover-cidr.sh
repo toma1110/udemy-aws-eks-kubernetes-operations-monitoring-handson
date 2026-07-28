@@ -18,11 +18,10 @@ stacks="$(aws_json cloudformation describe-stacks --region "$REGION" --stack-nam
 [[ "$(jq -r '.Stacks | length' <<<"$stacks")" == "1" ]] ||
   die "Expected exactly one fixed common stack."
 stack_id="$(jq -er '.Stacks[0].StackId' <<<"$stacks")"
-stack_prefix="arn:aws:cloudformation:$REGION:$AWS_ACCOUNT_ID:stack/$STACK_NAME/"
 stack_status="$(jq -er '.Stacks[0].StackStatus' <<<"$stacks")"
-[[ "$stack_id" == "$stack_prefix"* &&
+[[ "$stack_id" =~ ^arn:[^:]+:cloudformation:$REGION:[^:]+:stack/$STACK_NAME/.+$ &&
   "$stack_status" =~ ^(CREATE_COMPLETE|UPDATE_COMPLETE)$ ]] ||
-  die "Common stack account, Region, name, or stable lifecycle binding mismatch."
+  die "Common stack Region, name, or stable lifecycle binding mismatch."
 assert_exact_tag_map "$(jq -c '.Stacks[0].Tags' <<<"$stacks")" "CloudFormation stack"
 
 [[ "$(jq -r '[.Stacks[0].Outputs[] | select(.OutputKey == "ApiPublicAccessCidr")] | length' <<<"$stacks")" == "1" ]] ||
@@ -32,8 +31,8 @@ old_cidr="$(jq -er '.Stacks[0].Outputs[] | select(.OutputKey == "ApiPublicAccess
   die "Existing stack CIDR is not one exact non-world IPv4 /32."
 
 cluster="$(aws_json eks describe-cluster --region "$REGION" --name "$CLUSTER_NAME")"
-expected_arn="arn:aws:eks:$REGION:$AWS_ACCOUNT_ID:cluster/$CLUSTER_NAME"
-[[ "$(jq -r '.cluster.arn' <<<"$cluster")" == "$expected_arn" &&
+cluster_arn="$(jq -er '.cluster.arn' <<<"$cluster")"
+[[ "$cluster_arn" =~ ^arn:[^:]+:eks:$REGION:[^:]+:cluster/$CLUSTER_NAME$ &&
   "$(jq -r '.cluster.status' <<<"$cluster")" == "ACTIVE" ]] ||
   die "Exact common EKS cluster binding is not ACTIVE."
 runtime_cidrs="$(jq -c '.cluster.resourcesVpcConfig.publicAccessCidrs' <<<"$cluster")"

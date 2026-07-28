@@ -2,10 +2,6 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: External deadline workflow for exact Sections s4 and s5, common EKS, residual, then guard cleanup.
 
 Parameters:
-  AccountId:
-    Type: String
-    AllowedPattern: "^[0-9]{12}$"
-    Description: Exact account already verified by create.sh against STS.
   CleanupScheduleExpression:
     Type: String
     Description: Required UTC Scheduler at() expression, validated by create.sh to be within six hours.
@@ -55,7 +51,6 @@ Resources:
       Role: !GetAtt CleanupHandlerRole.Arn
       Environment:
         Variables:
-          EXPECTED_ACCOUNT: !Ref AccountId
           SCHEDULE_EXPRESSION: !Ref CleanupScheduleExpression
       Code:
         ZipFile: |
@@ -64,6 +59,7 @@ Resources:
           import ipaddress
           import json
           import os
+          import re
           import ssl
           import urllib.error
           import urllib.request
@@ -72,7 +68,6 @@ Resources:
           from botocore.signers import RequestSigner
 
           REGION = "ap-northeast-1"
-          ACCOUNT = os.environ["EXPECTED_ACCOUNT"]
           SCHEDULE_EXPRESSION = os.environ["SCHEDULE_EXPRESSION"]
           COMMON_STACK = "udemy4-c010-common-20260724"
           CLUSTER = COMMON_STACK
@@ -93,7 +88,7 @@ Resources:
               "app.kubernetes.io/part-of": "udemy4-c010",
               "app.kubernetes.io/managed-by": "udemy4",
               "udemy4.example/course": "C010",
-              "udemy4.example/lab": "section-s5",
+              "udemy4.example/work-package": "issue-31",
               "udemy4.example/purpose": "training",
               "kubernetes.io/metadata.name": S5_NAMESPACE,
           }
@@ -135,9 +130,11 @@ Resources:
 
           def validate_stack(stack):
               stack_id = stack.get("StackId", "")
-              prefix = "arn:aws:cloudformation:%s:%s:stack/%s/" % (REGION, ACCOUNT, COMMON_STACK)
-              if not stack_id.startswith(prefix):
-                  fail("Common stack account, Region, or name mismatch.")
+              pattern = r"^arn:[^:]+:cloudformation:%s:[^:]+:stack/%s/[^/]+$" % (
+                  re.escape(REGION), re.escape(COMMON_STACK)
+              )
+              if not re.fullmatch(pattern, stack_id):
+                  fail("Common stack Region or name mismatch.")
               if exact_dict(stack.get("Tags", []), "Key", "Value") != COMMON_TAGS:
                   fail("Common stack exact ownership tags mismatch.")
               if stack.get("StackStatus") not in {"CREATE_COMPLETE", "UPDATE_COMPLETE"}:
@@ -167,13 +164,15 @@ Resources:
 
           def classify_common_stack(stack):
               stack_id = stack.get("StackId", "")
-              prefix = "arn:aws:cloudformation:%s:%s:stack/%s/" % (REGION, ACCOUNT, COMMON_STACK)
+              pattern = r"^arn:[^:]+:cloudformation:%s:[^:]+:stack/%s/[^/]+$" % (
+                  re.escape(REGION), re.escape(COMMON_STACK)
+              )
               if (
                   stack.get("StackName") != COMMON_STACK
-                  or not stack_id.startswith(prefix)
+                  or not re.fullmatch(pattern, stack_id)
                   or exact_dict(stack.get("Tags", []), "Key", "Value") != COMMON_TAGS
               ):
-                  fail("Common stack pending identity or ownership mismatch.")
+                  fail("Common stack pending Region, name, or ownership mismatch.")
               parameters = exact_dict(
                   stack.get("Parameters", []), "ParameterKey", "ParameterValue"
               )
@@ -215,13 +214,15 @@ Resources:
 
           def validate_failed_stack(stack):
               stack_id = stack.get("StackId", "")
-              prefix = "arn:aws:cloudformation:%s:%s:stack/%s/" % (REGION, ACCOUNT, COMMON_STACK)
+              pattern = r"^arn:[^:]+:cloudformation:%s:[^:]+:stack/%s/[^/]+$" % (
+                  re.escape(REGION), re.escape(COMMON_STACK)
+              )
               if (
                   stack.get("StackName") != COMMON_STACK
-                  or not stack_id.startswith(prefix)
+                  or not re.fullmatch(pattern, stack_id)
                   or stack.get("StackStatus") != "ROLLBACK_COMPLETE"
               ):
-                  fail("Failed-create stack account, Region, name, ARN, or status mismatch.")
+                  fail("Failed-create stack Region, name, ARN, or status mismatch.")
               if exact_dict(stack.get("Tags", []), "Key", "Value") != COMMON_TAGS:
                   fail("Failed-create stack exact ownership tags mismatch.")
               parameters = exact_dict(
@@ -258,8 +259,13 @@ Resources:
               cluster = event["cluster"]
               stack_binding = validate_stack(stack)
               stack_id = stack_binding["stack_id"]
-              expected_arn = "arn:aws:eks:%s:%s:cluster/%s" % (REGION, ACCOUNT, CLUSTER)
-              if cluster.get("arn") != expected_arn or cluster.get("name") != CLUSTER:
+              cluster_pattern = r"^arn:[^:]+:eks:%s:[^:]+:cluster/%s$" % (
+                  re.escape(REGION), re.escape(CLUSTER)
+              )
+              if (
+                  not re.fullmatch(cluster_pattern, cluster.get("arn", ""))
+                  or cluster.get("name") != CLUSTER
+              ):
                   fail("EKS cluster exact ARN binding mismatch.")
               cluster_tags = cluster.get("tags", {})
               expected_cluster_tags = dict(COMMON_TAGS)
@@ -438,17 +444,17 @@ Resources:
                   - cloudformation:DescribeStacks
                   - cloudformation:DeleteStack
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AccountId}:stack/udemy4-c010-common-20260724/*"
-                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AccountId}:stack/udemy4-c010-common-20260724-guard/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/udemy4-c010-common-20260724/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:ap-northeast-1:${AWS::AccountId}:stack/udemy4-c010-common-20260724-guard/*"
               - Effect: Allow
                 Action: eks:DescribeCluster
-                Resource: !Sub "arn:${AWS::Partition}:eks:ap-northeast-1:${AccountId}:cluster/udemy4-c010-common-20260724"
+                Resource: !Sub "arn:${AWS::Partition}:eks:ap-northeast-1:${AWS::AccountId}:cluster/udemy4-c010-common-20260724"
               - Effect: Allow
                 Action: logs:ListTagsForResource
-                Resource: !Sub "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:log-group:/udemy4/c010/s4/20260725"
+                Resource: !Sub "arn:${AWS::Partition}:logs:ap-northeast-1:${AWS::AccountId}:log-group:/udemy4/c010/s4/20260725"
               - Effect: Allow
                 Action: logs:DeleteLogGroup
-                Resource: !Sub "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:log-group:/udemy4/c010/s4/20260725:*"
+                Resource: !Sub "arn:${AWS::Partition}:logs:ap-northeast-1:${AWS::AccountId}:log-group:/udemy4/c010/s4/20260725:*"
               - Effect: Allow
                 Action:
                   - ec2:DescribeInstances
@@ -732,7 +738,7 @@ Resources:
               "Type": "Task",
               "Resource": "arn:${AWS::Partition}:states:::aws-sdk:cloudwatchlogs:listTagsForResource",
               "Parameters": {
-                "ResourceArn": "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:log-group:/udemy4/c010/s4/20260725"
+                "ResourceArn": "arn:${AWS::Partition}:logs:ap-northeast-1:${AWS::AccountId}:log-group:/udemy4/c010/s4/20260725"
               },
               "ResultPath": "$.section_log_tags",
               "Next": "ValidateSectionLogTags"
@@ -957,9 +963,9 @@ Resources:
             Action: sts:AssumeRole
             Condition:
               StringEquals:
-                aws:SourceAccount: !Ref AccountId
+                aws:SourceAccount: !Ref AWS::AccountId
               ArnEquals:
-                aws:SourceArn: !Sub "arn:${AWS::Partition}:scheduler:ap-northeast-1:${AccountId}:schedule-group/default"
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:scheduler:ap-northeast-1:${AWS::AccountId}:schedule-group/default"
       Policies:
         - PolicyName: StartOnlyExactCleanupWorkflow
           PolicyDocument:

@@ -13,7 +13,7 @@
 
 ## 前提条件
 
-- AWS Management Consoleで、この演習に使用してよいAWS accountへsign inしている
+- AWS Management Consoleへsign inしている
 - ConsoleのRegion selectorで東京`ap-northeast-1`を選び、通常のAWS CloudShellを開いている
 - [common EKS README](../common-eks/README.md)のpreflight、create、statusを完了し、nodeが1台`Ready`になっている
 - AWS CLI `2.12.3`以上、`kubectl`、`jq`、Python 3をCloudShellで利用できる
@@ -29,7 +29,7 @@
 
 ## 手順
 
-### 1. AWS account、Region、toolを確認する
+### 1. Regionとtoolを確認する
 
 CloudShellで次を実行します。
 
@@ -42,36 +42,20 @@ kubectl version --client --output=json
 jq --version
 aws configure list
 df -h "$HOME"
-
-CALLER_ACCOUNT="$(aws sts get-caller-identity \
-  --region "$AWS_REGION" \
-  --query Account \
-  --output text \
-  --no-cli-pager)"
-printf 'Caller account: %s\n' "$CALLER_ACCOUNT"
 ```
 
-表示された12桁のaccountが、この演習に使用してよいaccountと一致することを確認します。一致した場合だけ次を実行してください。
-
-```bash
-export AWS_ACCOUNT_ID="$CALLER_ACCOUNT"
-```
-
-**ここまでの成功:** Regionが`ap-northeast-1`で、AWS CLI、kubectl、jqのversionが表示され、`Caller account`が承認済みaccountと一致します。一致しない場合や容量が不足している場合は、次へ進みません。
+**ここまでの成功:** Regionが`ap-northeast-1`で、AWS CLI、kubectl、jqのversionが表示され、容量に空きがあります。容量が不足している場合は次へ進みません。
 
 ### 2. 作業directoryと結果保存先を準備する
 
-repository rootで次をまとめて実行し、Section 4のdirectoryへ移動します。
+このREADMEがあるdirectoryへ移動してから、次をまとめて実行します。
 
 ```bash
-export LEARNER_REPO="$(git rev-parse --show-toplevel)"
-cd "$LEARNER_REPO/labs/s4-cloudwatch-logs-insights"
-
 test -f README.md
-test -f scripts/preflight.sh
-test -f queries/all-events.logs-insights
+test -d scripts
 
-export S4_DIR="$(pwd -P)"
+export S4_DIR="$(pwd)"
+export LEARNER_REPO="$(git -C "$S4_DIR" rev-parse --show-toplevel)"
 export EVIDENCE_DIR="$HOME/eks-monitoring-evidence/s4-cloudwatch-logs"
 
 CLOUDSHELL_PUBLIC_IP="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
@@ -98,10 +82,10 @@ CloudShellへ再接続してIPが変わった場合は、Sectionを実行せず�
 **ここまでの成功:** 次の1行が表示されます。
 
 ```text
-Section 4 preflight passed for exact account, Region, cluster context, and absent fixed resources.
+Section 4 preflight passed for exact Region, cluster context, and absent fixed resources.
 ```
 
-この確認では、AWS account、東京Region、EKS cluster、kubectlの接続先、必要なtagsとoutputsを照合します。また、これから作るNamespaceとlog groupがまだ存在しないことを確認します。条件が1つでも合わない場合、既存resourceを勝手に再利用せず、作成前に停止します。
+この確認では、東京Region、EKS clusterの固定名とARN構造、kubectlの接続先、必要なtagsとoutputsを照合します。また、これから作るNamespaceとlog groupがまだ存在しないことを確認します。条件が1つでも合わない場合、既存resourceを勝手に再利用せず、作成前に停止します。
 
 ### 4. EKSでsampleログを6件作る
 
@@ -228,7 +212,7 @@ cleanup guardは、通常の削除を忘れた場合に備える期限付きの�
 - Regionは`ap-northeast-1`だけ
 - common resourceのtagは`WorkPackage=c010-common-eks`
 - public endpointは現在のCloudShell `/32`だけ。`0.0.0.0/0`は禁止
-- 既存resource、未知のtag、別accountを引き継いで使わない
+- 既存resourceや未知のtagを引き継いで使わない
 
 ## Fixture fallback
 
@@ -243,7 +227,6 @@ python3 -B -m unittest discover -s "$S4_DIR/tests" -p 'test_*.py'
 
 ## Troubleshooting
 
-- `STS account does not equal AWS_ACCOUNT_ID`: Consoleのaccountを確認し、この演習に使用してよいaccountへ切り替えます。
 - Region error: Console selector、CloudShell tab、`AWS_REGION`、`AWS_DEFAULT_REGION`をすべて`ap-northeast-1`へ合わせます。
 - kubectl context error: common READMEに従い`aws eks update-kubeconfig --region ap-northeast-1 --name udemy4-c010-common-20260724`を実行します。
 - `API_PUBLIC_ACCESS_CIDR` error: CloudShellの現在のpublic IPv4を確認し、common EKSの`scripts/recover-cidr.sh`を実行してからpreflightへ戻ります。
@@ -252,7 +235,7 @@ python3 -B -m unittest discover -s "$S4_DIR/tests" -p 'test_*.py'
 - queryが`Complete`にならない: statusを保存して停止し、時間帯、log group、Region、permissionを確認します。
 - cleanup failure: 表示された残存resourceまたは権限errorを確認します。Section cleanup成功前にcommon cleanupへ進まず、検査をskipしません。
 - ownership label mismatch: 追加labelを無視して削除しません。作成元を確認し、判断なしにlabelを削除・上書きしません。
-- CloudShell再接続: 同じRegionの`$HOME` fileは残りますが、環境変数は再設定が必要です。account、Region、期限、resource状態を確認し直します。
+- CloudShell再接続: 同じRegionの`$HOME` fileは残りますが、環境変数は再設定が必要です。Region、期限、resource状態を確認し直します。
 
 ## 安全設計の補足
 
@@ -265,7 +248,7 @@ main scriptは、次の保護条件をすべて満たす場合だけ処理を続
 - 「不存在」はAPIが返す対象固有のnot-found responseだけで判断し、permission/network errorと区別する
 - deadline時もSchedulerが直接削除せず、Step FunctionsがSection → common → residual確認 → guardの順序を維持する
 
-これらは誤ったaccountや同名の別resourceを変更しないための保護です。error messageを無視して手動削除へ切り替えず、Troubleshootingの該当箇所から確認してください。
+これらは固定対象以外の同名resourceやownershipの異なるresourceを変更しないための保護です。error messageを無視して手動削除へ切り替えず、Troubleshootingの該当箇所から確認してください。
 
 ## 公式資料
 

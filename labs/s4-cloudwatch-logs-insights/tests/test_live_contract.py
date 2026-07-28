@@ -146,7 +146,6 @@ class LiveContractTests(unittest.TestCase):
             "local PowerShellは不要",
             "aws --version",
             "kubectl version --client --output=json",
-            "aws sts get-caller-identity",
             "ap-northeast-1",
             "$HOME",
             "1 GB",
@@ -157,8 +156,6 @@ class LiveContractTests(unittest.TestCase):
         for token in (
             'REGION="ap-northeast-1"',
             'CLUSTER_NAME="udemy4-c010-common-20260724"',
-            "AWS_ACCOUNT_ID",
-            "STS account does not equal AWS_ACCOUNT_ID",
             "kubectl context must equal the exact common cluster ARN",
             "endpointPrivateAccess",
             "endpointPublicAccess",
@@ -587,11 +584,10 @@ class LiveContractTests(unittest.TestCase):
             self.assertIn(token, self.readme)
 
         navigation_tokens = (
-            'export LEARNER_REPO="$(git rev-parse --show-toplevel)"',
-            'cd "$LEARNER_REPO/labs/s4-cloudwatch-logs-insights"',
-            "test -f scripts/preflight.sh",
-            "test -f queries/all-events.logs-insights",
-            'export S4_DIR="$(pwd -P)"',
+            "test -f README.md",
+            "test -d scripts",
+            'export S4_DIR="$(pwd)"',
+            'export LEARNER_REPO="$(git -C "$S4_DIR" rev-parse --show-toplevel)"',
         )
         for token in navigation_tokens:
             self.assertIn(token, self.readme)

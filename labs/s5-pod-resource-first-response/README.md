@@ -14,11 +14,9 @@ https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-hands
 
 ## 前提
 
-- 自分で利用を許可されたAWSアカウントを使います。
 - AWS Management Consoleで東京リージョン `ap-northeast-1` を選びます。
 - コマンドはすべてAWS CloudShellのBashで実行します。
 - 共通EKS環境の作成から削除まで、続けて作業できる時間を確保します。
-- `AWS_ACCOUNT_ID`には、これから使う12桁のAWSアカウントIDを設定します。
 
 この演習では、namespace内にPodを3個だけ作成します。Load Balancer、NAT Gateway、PVCは作成せず、Nodeの設定やIAM権限も変更しません。CrashLoopBackOffを確認するPodは10分で停止します。
 
@@ -33,7 +31,6 @@ export AWS_REGION="ap-northeast-1"
 export AWS_DEFAULT_REGION="ap-northeast-1"
 aws --version
 kubectl version --client --output=json
-aws sts get-caller-identity --region "$AWS_REGION" --no-cli-pager
 printf 'HOME=%s\n' "$HOME"
 df -h "$HOME"
 ```
@@ -41,10 +38,7 @@ df -h "$HOME"
 期待結果:
 
 - AWS CLIとkubectlのversionが表示される。
-- `aws sts get-caller-identity`に、自分が利用するAWSアカウントが表示される。
 - CloudShellの`$HOME`に空き容量がある。CloudShellの永続領域はRegionごとに1 GBです。
-
-表示されたAWSアカウントが利用予定のアカウントと異なる場合は、ここで停止してください。
 
 続けて、教材リポジトリをCloudShellの`$HOME`へ準備します。既に同じ名前のdirectoryがある場合は、正しいGit repositoryで変更中のfileがないことを確認してからfast-forwardします。別のdirectoryや変更中のfileを上書きしません。
 
@@ -80,7 +74,6 @@ Section 5のdirectoryから、共通EKS環境の手順へ移動します。
 ```bash
 cd ../common-eks
 export COMMON_EKS_DIR="$(pwd)"
-export AWS_ACCOUNT_ID="<12桁のAWSアカウントID>"
 export API_PUBLIC_ACCESS_CIDR="<現在のCloudShellのパブリックIP>/32"
 export AVAILABILITY_ZONE_A="ap-northeast-1a"
 export AVAILABILITY_ZONE_B="ap-northeast-1c"

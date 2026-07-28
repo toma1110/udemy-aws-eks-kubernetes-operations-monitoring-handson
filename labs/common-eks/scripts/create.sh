@@ -13,7 +13,6 @@ aws cloudformation create-stack \
   --template-body "file://$SCRIPT_DIR/../cleanup-guard.yaml" \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameters \
-  "ParameterKey=AccountId,ParameterValue=$AWS_ACCOUNT_ID" \
   "ParameterKey=CleanupScheduleExpression,ParameterValue=$schedule_expression" \
   --tags \
   "Key=Course,Value=C010" \

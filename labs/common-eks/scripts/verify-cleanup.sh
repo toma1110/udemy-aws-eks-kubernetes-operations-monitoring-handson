@@ -58,10 +58,13 @@ fi
 
 # The guard is removed last, only after every chargeable-residual query passes.
 get_expected_guard_binding
+[[ "$GUARD_STATE_MACHINE_ARN" =~ ^arn:[^:]+:states:$REGION:([^:]+):stateMachine:$GUARD_STATE_MACHINE_NAME$ ]] ||
+  die "Cleanup guard state machine ARN does not match the fixed Region and name."
+guard_resource_account="${BASH_REMATCH[1]}"
 schedule="$(aws_json scheduler get-schedule --region "$REGION" --name "$GUARD_SCHEDULE_NAME")"
 [[ "$(jq -r '.Name' <<<"$schedule")" == "$GUARD_SCHEDULE_NAME" &&
   "$(jq -r '.State' <<<"$schedule")" == "ENABLED" &&
-  "$(jq -r '.Target.RoleArn' <<<"$schedule")" == "arn:aws:iam::$AWS_ACCOUNT_ID:role/$GUARD_ROLE_NAME" &&
+  "$(jq -r '.Target.RoleArn' <<<"$schedule")" == "arn:aws:iam::$guard_resource_account:role/$GUARD_ROLE_NAME" &&
   "$(jq -r '.Target.Arn' <<<"$schedule")" == "$GUARD_STATE_MACHINE_ARN" &&
   "$(jq -r '.Target.Input' <<<"$schedule")" == '{"contract":"udemy4-c010-deadline-cleanup-v2"}' ]] ||
   die "Cleanup guard schedule binding mismatch."

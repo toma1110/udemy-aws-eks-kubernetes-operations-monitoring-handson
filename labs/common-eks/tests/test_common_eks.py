@@ -87,7 +87,6 @@ class CommonEksContractTests(unittest.TestCase):
             "Bash",
             "aws --version",
             "kubectl version --client --output=json",
-            "aws sts get-caller-identity",
             "ap-northeast-1",
             "$HOME",
             "1 GB",
@@ -168,7 +167,7 @@ class CommonEksContractTests(unittest.TestCase):
         self.assertEqual(21600, definition["TimeoutSeconds"])
         states = definition["States"]
         exact_log_group_arn = (
-            "arn:${AWS::Partition}:logs:ap-northeast-1:${AccountId}:"
+            "arn:${AWS::Partition}:logs:ap-northeast-1:${AWS::AccountId}:"
             "log-group:/udemy4/c010/s4/20260725"
         )
         state_machine_statements = resources["CleanupStateMachineRole"]["Properties"][
@@ -408,13 +407,11 @@ class CommonEksContractTests(unittest.TestCase):
             name: sys.modules.get(name)
             for name in ("boto3", "botocore", "botocore.signers")
         }
-        saved_account = os.environ.get("EXPECTED_ACCOUNT")
         saved_schedule = os.environ.get("SCHEDULE_EXPRESSION")
         try:
             sys.modules["boto3"] = fake_boto3
             sys.modules["botocore"] = fake_botocore
             sys.modules["botocore.signers"] = fake_signers
-            os.environ["EXPECTED_ACCOUNT"] = "123456789012"
             os.environ["SCHEDULE_EXPRESSION"] = "at(2999-01-01T00:00:00)"
             early = {}
             exec(compile(code, "cleanup-handler.py", "exec"), early)
@@ -454,16 +451,12 @@ class CommonEksContractTests(unittest.TestCase):
                 RuntimeError, "unsupported creation status"
             ):
                 post_deadline["classify_common_stack"](unsupported)
-            for mutation in ("status", "tag", "account", "name"):
+            for mutation in ("status", "tag", "name"):
                 rejected = copy.deepcopy(self.rollback_fixture["Stacks"][0])
                 if mutation == "status":
                     rejected["StackStatus"] = "UPDATE_ROLLBACK_COMPLETE"
                 elif mutation == "tag":
                     rejected["Tags"].append({"Key": "Unexpected", "Value": "reject"})
-                elif mutation == "account":
-                    rejected["StackId"] = rejected["StackId"].replace(
-                        "123456789012", "999999999999"
-                    )
                 else:
                     rejected["StackName"] = "other"
                 with self.assertRaises(RuntimeError):
@@ -502,7 +495,7 @@ class CommonEksContractTests(unittest.TestCase):
                 "app.kubernetes.io/part-of": "udemy4-c010",
                 "app.kubernetes.io/managed-by": "udemy4",
                 "udemy4.example/course": "C010",
-                "udemy4.example/lab": "section-s5",
+                "udemy4.example/work-package": "issue-31",
                 "udemy4.example/purpose": "training",
                 "kubernetes.io/metadata.name": "udemy4-c010-s5-20260724",
             }
@@ -654,10 +647,6 @@ class CommonEksContractTests(unittest.TestCase):
                     sys.modules.pop(name, None)
                 else:
                     sys.modules[name] = module
-            if saved_account is None:
-                os.environ.pop("EXPECTED_ACCOUNT", None)
-            else:
-                os.environ["EXPECTED_ACCOUNT"] = saved_account
             if saved_schedule is None:
                 os.environ.pop("SCHEDULE_EXPRESSION", None)
             else:
@@ -694,13 +683,11 @@ class CommonEksContractTests(unittest.TestCase):
             result = run_bash(rejected)
             self.assertNotEqual(0, result.returncode, rejected)
 
-    def test_exact_name_region_tags_and_account_binding(self):
+    def test_exact_name_region_and_tags(self):
         for token in (
             'REGION="ap-northeast-1"',
             'STACK_NAME="udemy4-c010-common-20260724"',
             'CLUSTER_NAME="udemy4-c010-common-20260724"',
-            "AWS_ACCOUNT_ID",
-            "STS account does not equal AWS_ACCOUNT_ID",
             '"Course": "C010"',
             '"WorkPackage": "c010-common-eks"',
             '"ManagedBy": "udemy4"',
@@ -968,34 +955,27 @@ class CommonEksContractTests(unittest.TestCase):
     def test_rollback_complete_fixture_and_manual_recovery_are_fail_closed(self):
         fixture = json.dumps(self.rollback_fixture, separators=(",", ":"))
         accepted = run_bash(
-            "export AWS_ACCOUNT_ID=123456789012; "
             f"assert_failed_stack_document {shlex.quote(fixture)} >/dev/null; "
-            "assert_aws_identity(){ :; }; aws_exact_not_found(){ return 0; }; "
+            "aws_exact_not_found(){ return 0; }; "
             f"get_failed_stack_binding {shlex.quote(fixture)}; "
             "require_common_cleanup_gate"
         )
         self.assertEqual(0, accepted.returncode, accepted.stderr)
         active_cluster = run_bash(
-            "export AWS_ACCOUNT_ID=123456789012; "
-            "assert_aws_identity(){ :; }; aws_exact_not_found(){ return 1; }; "
+            "aws_exact_not_found(){ return 1; }; "
             f"get_failed_stack_binding {shlex.quote(fixture)}"
         )
         self.assertNotEqual(0, active_cluster.returncode)
-        for mutation in ("status", "tag", "account", "name"):
+        for mutation in ("status", "tag", "name"):
             rejected = copy.deepcopy(self.rollback_fixture)
             stack = rejected["Stacks"][0]
             if mutation == "status":
                 stack["StackStatus"] = "UPDATE_ROLLBACK_COMPLETE"
             elif mutation == "tag":
                 stack["Tags"].append({"Key": "Unexpected", "Value": "reject"})
-            elif mutation == "account":
-                stack["StackId"] = stack["StackId"].replace(
-                    "123456789012", "999999999999"
-                )
             else:
                 stack["StackName"] = "other"
             result = run_bash(
-                "export AWS_ACCOUNT_ID=123456789012; "
                 f"assert_failed_stack_document {shlex.quote(json.dumps(rejected))}"
             )
             self.assertNotEqual(0, result.returncode, mutation)
@@ -1071,9 +1051,9 @@ class CommonEksContractTests(unittest.TestCase):
 
     def test_cleanup_gate_cannot_be_skipped_or_replayed_for_another_binding(self):
         result = run_bash(
-            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
-            "printf -v expected '%s|%s|%s|%s|%s|%s' "
-            '"$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" '
+            "export API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "printf -v expected '%s|%s|%s|%s|%s' "
+            '"$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" '
             "'udemy4-s4-logs' '/udemy4/c010/s4/20260725'; "
             "unset SECTION_S4_CLEANUP_GATE_PASSED; "
             "if require_section_s4_cleanup_gate; then exit 20; fi; "
@@ -1086,7 +1066,7 @@ class CommonEksContractTests(unittest.TestCase):
 
     def test_s5_cleanup_gate_rejects_remaining_namespace_and_binds_not_found(self):
         remains = run_bash(
-            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "export API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
             "assert_exact_kubernetes_context() { :; }; "
             "kubectl() { printf 'namespace/udemy4-c010-s5-20260724\\n'; }; "
             "assert_section_s5_residuals_absent"
@@ -1095,7 +1075,7 @@ class CommonEksContractTests(unittest.TestCase):
         self.assertIn("Section s5 namespace remains", remains.stderr)
 
         absent = run_bash(
-            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "export API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
             "assert_exact_kubernetes_context() { :; }; "
             "kubectl() { printf 'Error from server (NotFound)\\n' >&2; return 1; }; "
             "assert_section_s5_residuals_absent; "
@@ -1110,7 +1090,7 @@ class CommonEksContractTests(unittest.TestCase):
             common.index("require_section_s5_cleanup_gate", common.index("require_common_cleanup_gate")),
         )
         result = run_bash(
-            "export AWS_ACCOUNT_ID=123456789012 API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
+            "export API_PUBLIC_ACCESS_CIDR=198.51.100.10/32; "
             "SECTION_S4_CLEANUP_GATE_PASSED=\"$(section_s4_cleanup_gate_binding)\"; "
             "unset SECTION_S5_CLEANUP_GATE_PASSED; "
             "if require_common_cleanup_gate; then exit 31; fi; "
@@ -1151,7 +1131,6 @@ class CommonEksContractTests(unittest.TestCase):
             "約USD 0.97",
             "実請求",
             "scripts/delete.sh",
-            "AWS_ACCOUNT_ID",
             "Section 4",
             "Section 5を実行した場合",
             '"$S5_DIR/scripts/cleanup-section.sh"',

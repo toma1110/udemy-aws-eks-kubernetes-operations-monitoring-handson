@@ -4,7 +4,7 @@
 
 ## 前提条件と入力値
 
-自分で利用を許可されたAWSアカウントを使い、東京リージョン `ap-northeast-1` のCloudShellを開きます。AWS CLI `2.12.3`以上、`kubectl`、`jq`が必要です。`kubectl`はcluster versionと同じ、または前後1 minor以内を使います。
+東京リージョン `ap-northeast-1` のCloudShellを開きます。AWS CLI `2.12.3`以上、`kubectl`、`jq`が必要です。`kubectl`はcluster versionと同じ、または前後1 minor以内を使います。
 
 ```bash
 export AWS_REGION="ap-northeast-1"
@@ -12,11 +12,8 @@ export AWS_DEFAULT_REGION="ap-northeast-1"
 aws --version
 kubectl version --client --output=json
 jq --version
-CALLER_ACCOUNT="$(aws sts get-caller-identity --region "$AWS_REGION" --query Account --output text --no-cli-pager)"
-printf 'Caller account: %s\n' "$CALLER_ACCOUNT"
 printf 'HOME=%s\n' "$HOME"
 df -h "$HOME"
-export AWS_ACCOUNT_ID="$CALLER_ACCOUNT"
 
 export COMMON_EKS_DIR="$(pwd)"
 chmod +x "$COMMON_EKS_DIR"/scripts/*.sh
@@ -27,7 +24,7 @@ export AVAILABILITY_ZONE_B="ap-northeast-1c"
 export CLEANUP_DEADLINE_UTC="$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%M:%SZ')"
 ```
 
-表示されたAWSアカウントが利用予定と異なる場合は停止してください。CloudShellの`$HOME`はRegionごとに1 GBです。`API_PUBLIC_ACCESS_CIDR`は現在のCloudShellのpublic IPv4だけを`/32`で指定し、`0.0.0.0/0`は使いません。削除開始は既定で4時間後です。15分より後、最大6時間以内を指定します。
+CloudShellの`$HOME`はRegionごとに1 GBです。`API_PUBLIC_ACCESS_CIDR`は現在のCloudShellのpublic IPv4だけを`/32`で指定し、`0.0.0.0/0`は使いません。削除開始は既定で4時間後です。15分より後、最大6時間以内を指定します。
 
 ## 費用
 
@@ -88,7 +85,6 @@ export COMMON_EKS_DIR="$(pwd)"
 
 ## トラブルシュート
 
-- `STS account does not equal AWS_ACCOUNT_ID`: AWSアカウントを確認し、`aws sts get-caller-identity`からやり直します。
 - Regionの不一致: ConsoleとCloudShellを東京へ切り替えます。
 - `kubectl context`: `aws eks update-kubeconfig --region ap-northeast-1 --name udemy4-c010-common-20260724`を実行します。
 - `NodeCreationFailure`: Sectionへ進まず、CloudFormationの状態を確認して`scripts/delete.sh`を実行します。

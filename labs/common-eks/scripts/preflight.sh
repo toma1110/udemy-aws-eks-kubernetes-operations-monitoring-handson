@@ -24,5 +24,5 @@ if ! aws_exact_not_found 'ValidationError.*does not exist' \
   die "The fixed cleanup guard stack already exists. Creation is rejected; use delete after exact binding."
 fi
 
-printf 'Preflight passed for absent fixed stacks, exact account, %s, selected AZs, quota, and deadline %s.\n' \
+printf 'Preflight passed for absent fixed stacks, %s, selected AZs, quota, and deadline %s.\n' \
   "$REGION" "$CLEANUP_DEADLINE_UTC"

@@ -181,25 +181,17 @@ assert_external_binding() {
     die "kubectl client version check failed."
   [[ "${AWS_REGION:-}" == "$REGION" && "${AWS_DEFAULT_REGION:-}" == "$REGION" ]] ||
     die "Set AWS_REGION and AWS_DEFAULT_REGION to ap-northeast-1."
-  [[ "${AWS_ACCOUNT_ID:-}" =~ ^[0-9]{12}$ ]] ||
-    die "Set AWS_ACCOUNT_ID to the exact approved 12-digit account."
   assert_current_cloudshell_cidr
-  local identity actual cluster expected_arn context stacks expected_cidr stack_id stack_prefix
-  identity="$(aws_json sts get-caller-identity --region "$REGION")"
-  actual="$(jq -er '.Account | select(test("^[0-9]{12}$"))' <<<"$identity")" ||
-    die "STS did not return one exact account."
-  [[ "$actual" == "$AWS_ACCOUNT_ID" ]] ||
-    die "STS account does not equal AWS_ACCOUNT_ID."
+  local cluster cluster_arn context stacks expected_cidr stack_id
   cluster="$(aws_json eks describe-cluster --region "$REGION" --name "$CLUSTER_NAME")"
-  expected_arn="arn:aws:eks:$REGION:$AWS_ACCOUNT_ID:cluster/$CLUSTER_NAME"
-  [[ "$(jq -r '.cluster.arn' <<<"$cluster")" == "$expected_arn" &&
+  cluster_arn="$(jq -er '.cluster.arn' <<<"$cluster")"
+  [[ "$cluster_arn" =~ ^arn:[^:]+:eks:$REGION:[^:]+:cluster/$CLUSTER_NAME$ &&
     "$(jq -r '.cluster.status' <<<"$cluster")" == "ACTIVE" ]] ||
     die "Exact common EKS cluster binding is not ACTIVE."
   stacks="$(aws_json cloudformation describe-stacks --region "$REGION" --stack-name "$CLUSTER_NAME")"
   stack_id="$(jq -er '.Stacks[0].StackId' <<<"$stacks")"
-  stack_prefix="arn:aws:cloudformation:$REGION:$AWS_ACCOUNT_ID:stack/$CLUSTER_NAME/"
   [[ "$(jq -r '.Stacks | length' <<<"$stacks")" == "1" &&
-    "$stack_id" == "$stack_prefix"* ]] ||
+    "$stack_id" =~ ^arn:[^:]+:cloudformation:$REGION:[^:]+:stack/$CLUSTER_NAME/.+$ ]] ||
     die "Exact common CloudFormation stack binding mismatch."
   assert_exact_stack_tags "$(jq -c '.Stacks[0].Tags' <<<"$stacks")"
   assert_fixed_stack_outputs "$(jq -c '.Stacks[0].Outputs' <<<"$stacks")"
@@ -225,7 +217,7 @@ assert_external_binding() {
     "$(kubectl version --client --output=json | jq -er '.clientVersion.gitVersion')" \
     "$(jq -er '.cluster.version' <<<"$cluster")"
   context="$(kubectl config current-context)"
-  [[ "$context" == "$expected_arn" ]] ||
+  [[ "$context" == "$cluster_arn" ]] ||
     die "kubectl context must equal the exact common cluster ARN."
 }
 

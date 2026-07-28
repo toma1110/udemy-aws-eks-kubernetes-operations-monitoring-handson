@@ -98,19 +98,8 @@ aws_exact_not_found() {
   die "AWS CLI failed and was not an exact not-found result: $output"
 }
 
-assert_required_account_input() {
-  [[ "${AWS_ACCOUNT_ID:-}" =~ ^[0-9]{12}$ ]] ||
-    die "Set AWS_ACCOUNT_ID to the exact approved 12-digit target account."
-}
-
-assert_aws_identity() {
-  assert_required_account_input
-  local identity actual_account region_count
-  identity="$(aws_json sts get-caller-identity --region "$REGION")"
-  actual_account="$(jq -er '.Account | select(test("^[0-9]{12}$"))' <<<"$identity")" ||
-    die "STS did not return one exact account."
-  [[ "$actual_account" == "$AWS_ACCOUNT_ID" ]] ||
-    die "STS account does not equal AWS_ACCOUNT_ID."
+assert_fixed_region() {
+  local region_count
   region_count="$(
     aws_json ec2 describe-regions --region "$REGION" --region-names "$REGION" |
       jq -er --arg region "$REGION" '[.Regions[] | select(.RegionName == $region)] | length'
@@ -134,7 +123,7 @@ assert_preflight() {
       jq -e '.clientVersion.gitVersion | strings | length > 0' >/dev/null ||
       die "kubectl client version check failed."
   fi
-  assert_aws_identity
+  assert_fixed_region
 }
 
 assert_exact_cidr() {
@@ -265,16 +254,16 @@ PY
 }
 
 get_expected_guard_binding() {
-  assert_aws_identity
-  local stacks stack_id status tags outputs prefix
+  local stacks stack_id status tags outputs resource_account
   stacks="$(aws_json cloudformation describe-stacks --region "$REGION" --stack-name "$GUARD_STACK_NAME")"
   [[ "$(jq -r '.Stacks | length' <<<"$stacks")" == "1" ]] ||
     die "Expected exactly one fixed cleanup guard stack."
   stack_id="$(jq -er '.Stacks[0].StackId' <<<"$stacks")"
   status="$(jq -er '.Stacks[0].StackStatus' <<<"$stacks")"
-  prefix="arn:aws:cloudformation:$REGION:$AWS_ACCOUNT_ID:stack/$GUARD_STACK_NAME/"
-  [[ "$stack_id" == "$prefix"* && "$status" == "CREATE_COMPLETE" ]] ||
-    die "Cleanup guard stack ID, account, Region, name, or status mismatch."
+  [[ "$stack_id" =~ ^arn:[^:]+:cloudformation:$REGION:([^:]+):stack/$GUARD_STACK_NAME/.+$ &&
+    "$status" == "CREATE_COMPLETE" ]] ||
+    die "Cleanup guard stack ID, Region, name, or status mismatch."
+  resource_account="${BASH_REMATCH[1]}"
   tags="$(jq -c '.Stacks[0].Tags' <<<"$stacks")"
   assert_exact_guard_tag_map "$tags"
   outputs="$(jq -c '.Stacks[0].Outputs | map({(.OutputKey): .OutputValue}) | add' <<<"$stacks")"
@@ -284,9 +273,9 @@ get_expected_guard_binding() {
     "$(jq -r '.TemplateContract' <<<"$outputs")" == "$GUARD_TEMPLATE_CONTRACT" &&
     "$(jq -r '.ScheduleName' <<<"$outputs")" == "$GUARD_SCHEDULE_NAME" &&
     "$(jq -r '.RoleName' <<<"$outputs")" == "$GUARD_ROLE_NAME" &&
-    "$(jq -r '.CleanupRoleArn' <<<"$outputs")" == "arn:aws:iam::$AWS_ACCOUNT_ID:role/$GUARD_CLEANUP_HANDLER_ROLE_NAME" &&
+    "$(jq -r '.CleanupRoleArn' <<<"$outputs")" == "arn:aws:iam::$resource_account:role/$GUARD_CLEANUP_HANDLER_ROLE_NAME" &&
     "$(jq -r '.HandlerFunctionName' <<<"$outputs")" == "$GUARD_CLEANUP_HANDLER_NAME" &&
-    "$(jq -r '.StateMachineArn' <<<"$outputs")" == "arn:aws:states:$REGION:$AWS_ACCOUNT_ID:stateMachine:$GUARD_STATE_MACHINE_NAME" ]] ||
+    "$(jq -r '.StateMachineArn' <<<"$outputs")" == "arn:aws:states:$REGION:$resource_account:stateMachine:$GUARD_STATE_MACHINE_NAME" ]] ||
     die "Cleanup guard output binding mismatch."
   GUARD_STACK_ID="$stack_id"
   GUARD_STATE_MACHINE_ARN="$(jq -r '.StateMachineArn' <<<"$outputs")"
@@ -322,22 +311,25 @@ PY
 
 assert_failed_stack_document() {
   local stacks_json="$1"
-  python3 - "$stacks_json" "$AWS_ACCOUNT_ID" "$REGION" "$STACK_NAME" "$TEMPLATE_CONTRACT" <<'PY' ||
+  python3 - "$stacks_json" "$REGION" "$STACK_NAME" "$TEMPLATE_CONTRACT" <<'PY' ||
 import ipaddress
 import json
 import re
 import sys
 
 document = json.loads(sys.argv[1])
-account, region, name, contract = sys.argv[2:]
+region, name, contract = sys.argv[2:]
 stacks = document.get("Stacks")
 if not isinstance(stacks, list) or len(stacks) != 1:
     raise SystemExit(1)
 stack = stacks[0]
-prefix = f"arn:aws:cloudformation:{region}:{account}:stack/{name}/"
+stack_pattern = re.compile(
+    rf"^arn:[^:]+:cloudformation:{re.escape(region)}:[^:]+:"
+    rf"stack/{re.escape(name)}/[^/]+$"
+)
 if (
     stack.get("StackName") != name
-    or not stack.get("StackId", "").startswith(prefix)
+    or not stack_pattern.fullmatch(stack.get("StackId", ""))
     or stack.get("StackStatus") != "ROLLBACK_COMPLETE"
 ):
     raise SystemExit(1)
@@ -394,33 +386,30 @@ if az_a == az_b or not all(re.fullmatch(r"ap-northeast-1[a-z]", az) for az in (a
     raise SystemExit(1)
 print(stack["StackId"])
 PY
-    die "Failed-create stack account, Region, name, ARN, status, tags, or parameters mismatch."
+    die "Failed-create stack Region, name, ARN, status, tags, or parameters mismatch."
 }
 
 get_failed_stack_binding() {
   local stacks="$1" stack_id
-  assert_aws_identity
   stack_id="$(assert_failed_stack_document "$stacks")"
   aws_exact_not_found 'ResourceNotFoundException' \
     eks describe-cluster --region "$REGION" --name "$CLUSTER_NAME" ||
     die "ROLLBACK_COMPLETE recovery requires the exact EKS cluster to be absent."
   STACK_ID="$stack_id"
-  printf -v FAILED_CREATE_RECOVERY_GATE_PASSED '%s|%s|%s|%s' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$STACK_ID" "ROLLBACK_COMPLETE"
+  printf -v FAILED_CREATE_RECOVERY_GATE_PASSED '%s|%s|%s' \
+    "$REGION" "$STACK_ID" "ROLLBACK_COMPLETE"
   export STACK_ID FAILED_CREATE_RECOVERY_GATE_PASSED
 }
 
 get_expected_stack_binding() {
-  assert_aws_identity
   assert_current_cloudshell_cidr
-  local stacks stack_id tags outputs prefix cluster expected_arn expected_cidr
+  local stacks stack_id tags outputs cluster cluster_arn expected_cidr
   stacks="$(aws_json cloudformation describe-stacks --region "$REGION" --stack-name "$STACK_NAME")"
   [[ "$(jq -r '.Stacks | length' <<<"$stacks")" == "1" ]] ||
     die "Expected exactly one fixed CloudFormation stack."
   stack_id="$(jq -er '.Stacks[0].StackId' <<<"$stacks")"
-  prefix="arn:aws:cloudformation:$REGION:$AWS_ACCOUNT_ID:stack/$STACK_NAME/"
-  [[ "$stack_id" == "$prefix"* ]] ||
-    die "Stack ID, account, Region, or name mismatch."
+  [[ "$stack_id" =~ ^arn:[^:]+:cloudformation:$REGION:[^:]+:stack/$STACK_NAME/.+$ ]] ||
+    die "Stack ID, Region, or name mismatch."
   tags="$(jq -c '.Stacks[0].Tags' <<<"$stacks")"
   assert_exact_tag_map "$tags" "CloudFormation stack"
   outputs="$(jq -c '.Stacks[0].Outputs | map({(.OutputKey): .OutputValue}) | add' <<<"$stacks")"
@@ -444,9 +433,9 @@ get_expected_stack_binding() {
   [[ "$expected_cidr" == "$API_PUBLIC_ACCESS_CIDR" && "$expected_cidr" != "0.0.0.0/0" ]] ||
     die "Stack ApiPublicAccessCidr does not equal the exact current CloudShell CIDR."
   cluster="$(aws_json eks describe-cluster --region "$REGION" --name "$CLUSTER_NAME")"
-  expected_arn="arn:aws:eks:$REGION:$AWS_ACCOUNT_ID:cluster/$CLUSTER_NAME"
+  cluster_arn="$(jq -er '.cluster.arn' <<<"$cluster")"
   [[ "$(jq -r '.cluster.name' <<<"$cluster")" == "$CLUSTER_NAME" &&
-    "$(jq -r '.cluster.arn' <<<"$cluster")" == "$expected_arn" ]] ||
+    "$cluster_arn" =~ ^arn:[^:]+:eks:$REGION:[^:]+:cluster/$CLUSTER_NAME$ ]] ||
     die "EKS cluster ARN ownership mismatch."
   mapfile -t runtime_cidrs < <(jq -er '.cluster.resourcesVpcConfig.publicAccessCidrs[]' <<<"$cluster")
   assert_runtime_endpoint_values \
@@ -459,15 +448,16 @@ get_expected_stack_binding() {
     "$(jq -er '.cluster.version' <<<"$cluster")"
   assert_exact_eks_cluster_tags "$(jq -c '.cluster.tags' <<<"$cluster")" "$stack_id"
   STACK_ID="$stack_id"
-  CLUSTER_ARN="$expected_arn"
+  CLUSTER_ARN="$cluster_arn"
   export STACK_ID CLUSTER_ARN CLEANUP_RBAC_MANIFEST CLUSTER_CLEANUP_RBAC_MANIFEST
 }
 
 assert_exact_kubernetes_context() {
-  local expected="arn:aws:eks:$REGION:$AWS_ACCOUNT_ID:cluster/$CLUSTER_NAME"
+  [[ "${CLUSTER_ARN:-}" =~ ^arn:[^:]+:eks:$REGION:[^:]+:cluster/$CLUSTER_NAME$ ]] ||
+    die "Exact EKS cluster ARN must be loaded from the current cluster response."
   local actual
   actual="$(kubectl config current-context)"
-  [[ "$actual" == "$expected" ]] ||
+  [[ "$actual" == "$CLUSTER_ARN" ]] ||
     die "Current kubectl context must equal the exact expected EKS cluster ARN."
 }
 
@@ -534,30 +524,30 @@ apply_exact_cluster_cleanup_rbac() {
 }
 
 section_s4_cleanup_gate_binding() {
-  printf '%s|%s|%s|%s|%s|%s\n' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+  printf '%s|%s|%s|%s|%s\n' \
+    "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-s4-logs" "/udemy4/c010/s4/20260725"
 }
 
 require_section_s4_cleanup_gate() {
   local expected
-  printf -v expected '%s|%s|%s|%s|%s|%s' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+  printf -v expected '%s|%s|%s|%s|%s' \
+    "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-s4-logs" "/udemy4/c010/s4/20260725"
   [[ "${SECTION_S4_CLEANUP_GATE_PASSED:-}" == "$expected" ]] ||
     die "Exact Section s4 namespace/Job/log-group residual gate must pass in this delete process."
 }
 
 section_s5_cleanup_gate_binding() {
-  printf '%s|%s|%s|%s|%s\n' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+  printf '%s|%s|%s|%s\n' \
+    "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-c010-s5-20260724"
 }
 
 require_section_s5_cleanup_gate() {
   local expected
-  printf -v expected '%s|%s|%s|%s|%s' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+  printf -v expected '%s|%s|%s|%s' \
+    "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-c010-s5-20260724"
   [[ "${SECTION_S5_CLEANUP_GATE_PASSED:-}" == "$expected" ]] ||
     die "Exact Section s5 namespace residual gate must pass in this delete process."
@@ -566,8 +556,8 @@ require_section_s5_cleanup_gate() {
 require_common_cleanup_gate() {
   if [[ -n "${FAILED_CREATE_RECOVERY_GATE_PASSED:-}" ]]; then
     local expected
-    printf -v expected '%s|%s|%s|%s' \
-      "$AWS_ACCOUNT_ID" "$REGION" "$STACK_ID" "ROLLBACK_COMPLETE"
+    printf -v expected '%s|%s|%s' \
+      "$REGION" "$STACK_ID" "ROLLBACK_COMPLETE"
     [[ "$FAILED_CREATE_RECOVERY_GATE_PASSED" == "$expected" ]] ||
       die "Failed-create cleanup gate does not match the exact rollback stack binding."
     return
@@ -590,8 +580,8 @@ assert_section_s4_residuals_absent() {
   groups="$(aws_json logs describe-log-groups --region "$REGION" --log-group-name-prefix "/udemy4/c010/s4/20260725")"
   [[ "$(jq -r '[.logGroups[] | select(.logGroupName == "/udemy4/c010/s4/20260725")] | length' <<<"$groups")" == "0" ]] ||
     die "Section s4 log group remains; run Section cleanup before common cleanup."
-  printf -v SECTION_S4_CLEANUP_GATE_PASSED '%s|%s|%s|%s|%s|%s' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+  printf -v SECTION_S4_CLEANUP_GATE_PASSED '%s|%s|%s|%s|%s' \
+    "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-s4-logs" "/udemy4/c010/s4/20260725"
   export SECTION_S4_CLEANUP_GATE_PASSED
 }
@@ -604,8 +594,8 @@ assert_section_s5_residuals_absent() {
   elif ! grep -q 'NotFound' <<<"$output"; then
     die "Section s5 namespace residual check failed: $output"
   fi
-  printf -v SECTION_S5_CLEANUP_GATE_PASSED '%s|%s|%s|%s|%s' \
-    "$AWS_ACCOUNT_ID" "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
+  printf -v SECTION_S5_CLEANUP_GATE_PASSED '%s|%s|%s|%s' \
+    "$REGION" "$CLUSTER_NAME" "$API_PUBLIC_ACCESS_CIDR" \
     "udemy4-c010-s5-20260724"
   export SECTION_S5_CLEANUP_GATE_PASSED
 }
