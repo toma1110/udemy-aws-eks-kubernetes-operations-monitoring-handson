@@ -23,7 +23,8 @@ jq -R -s '
 
 aws logs create-log-group --region "$REGION" --log-group-name "$LOG_GROUP_NAME" --no-cli-pager
 aws logs tag-log-group --region "$REGION" --log-group-name "$LOG_GROUP_NAME" \
-  --tags Course=C010 ManagedBy=udemy4 Purpose=training Section=s4 --no-cli-pager
+  --tags '{"Course":"C010","ManagedBy":"udemy4","Purpose":"training","Section":"s4"}' \
+  --no-cli-pager
 aws logs put-retention-policy --region "$REGION" --log-group-name "$LOG_GROUP_NAME" \
   --retention-in-days 1 --no-cli-pager
 aws logs create-log-stream --region "$REGION" --log-group-name "$LOG_GROUP_NAME" \

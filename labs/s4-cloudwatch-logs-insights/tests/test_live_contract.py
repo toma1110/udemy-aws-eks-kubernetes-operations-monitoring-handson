@@ -467,6 +467,27 @@ class LiveContractTests(unittest.TestCase):
             accepted({"rejectedLogEventsInfo": {"tooNewLogEventStartIndex": 0}})
         )
 
+    def test_tag_log_group_passes_one_exact_json_map_argv(self) -> None:
+        publish = self.scripts["publish-logs.sh"]
+        normalized = re.sub(r"\\\n\s*", " ", publish)
+        command = next(
+            line.strip()
+            for line in normalized.splitlines()
+            if line.strip().startswith("aws logs tag-log-group ")
+        )
+        argv = shlex.split(command)
+        tags_index = argv.index("--tags")
+        self.assertEqual("--no-cli-pager", argv[tags_index + 2])
+        self.assertEqual(
+            {
+                "Course": "C010",
+                "ManagedBy": "udemy4",
+                "Purpose": "training",
+                "Section": "s4",
+            },
+            json.loads(argv[tags_index + 1]),
+        )
+
     def test_evidence_directory_rejects_git_worktrees(self) -> None:
         for token in (
             "LEARNER_REPO",
