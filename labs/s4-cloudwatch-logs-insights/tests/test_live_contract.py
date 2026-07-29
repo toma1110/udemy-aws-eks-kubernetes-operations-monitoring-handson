@@ -693,9 +693,18 @@ class LiveContractTests(unittest.TestCase):
             "最大6時間以内",
             "WorkPackage=c010-common-eks",
             "localのsyntax/fixture validationだけ",
-            "成功したlive AWS runとして扱わない",
+            "account IDとARNが含まれる",
+            "画面、提出物、公開場所へ内容を共有しない",
+            "credentialも保存・共有しない",
+            "Console上の動作は確認できません",
         ):
             self.assertIn(token, self.readme)
+        for production_token in (
+            "成功表示にaccount IDは含めません",
+            "成功したlive AWS runとして扱わない",
+            "過去runとのaccount比較",
+        ):
+            self.assertNotIn(production_token, self.readme)
 
     def test_learner_inventory_is_exact_and_current(self) -> None:
         inventory = ROOT / "artifact-inventory.sha256"

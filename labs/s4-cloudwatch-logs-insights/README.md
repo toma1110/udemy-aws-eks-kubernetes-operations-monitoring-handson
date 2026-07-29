@@ -72,7 +72,7 @@ printf 'Section directory: %s\nResult directory: %s\nCloudShell CIDR: %s\n' \
   "$S4_DIR" "$EVIDENCE_DIR" "$API_PUBLIC_ACCESS_CIDR"
 ```
 
-`EVIDENCE_DIR`はquery結果などの保存先です。Git repositoryの外に置き、account ID、ARN、credentialは保存しません。`bind-current-identity.sh`はcommon EKS preflightが作ったdeterministic pathのsole identityを再発見・再検証して再利用します。環境変数が失われた再接続でもSection 4用の2個目を作成・上書きしません。候補0件ならdeterministic pathへ初回作成し、複数、foreign、malformed、current identity mismatchならfail closedです。内容をterminal、提出物、Issueへ貼り付けず、過去runとのaccount比較には使いません。
+`EVIDENCE_DIR`はquery結果などの保存先です。Git repositoryの外に置き、account ID、ARN、credentialは保存しません。`bind-current-identity.sh`はcommon EKSのpreflightで作成した非公開の本人確認fileを再検証して再利用します。CloudShellへ再接続した場合も新しいfileを増やさず、既存fileが1件で現在のログイン先と一致するときだけ続行します。fileがない初回は作成し、複数ある場合、内容が不正な場合、現在のログイン先と一致しない場合は停止します。このfileにはaccount IDとARNが含まれるため、Gitへ追加せず、画面、提出物、公開場所へ内容を共有しないでください。credentialも保存・共有しないでください。
 
 **ここまでの成功:** Section directory、result directory、CloudShell CIDRの3行が表示されます。CIDRは現在のCloudShell public IPv4に`/32`を付けた1件だけです。`0.0.0.0/0`は使用しません。
 
@@ -90,7 +90,7 @@ CloudShellへ再接続してIPが変わった場合は、Sectionを実行せず�
 Section 4 preflight passed for exact Region, cluster context, and absent fixed resources.
 ```
 
-この確認では、現在のdefault CloudShell STS identityの有効性、東京Region、EKS clusterの固定名とARN構造、kubectlの接続先、必要なtagsとoutputsを照合します。また、これから作るNamespaceとlog groupがまだ存在しないことを確認します。成功表示にaccount IDは含めません。条件が1つでも合わない場合、既存resourceを勝手に再利用せず、作成前に停止します。
+この確認では、現在のdefault CloudShell STS identityの有効性、東京Region、EKS clusterの固定名とARN構造、kubectlの接続先、必要なtagsとoutputsを照合します。また、これから作るNamespaceとlog groupがまだ存在しないことを確認します。条件が1つでも合わない場合、既存resourceを勝手に再利用せず、作成前に停止します。
 
 ### 4. EKSでsampleログを6件作る
 
@@ -150,7 +150,7 @@ Bounded Logs Insights queries returned exact 6/2 rows for namespace udemy4-s4-lo
 
 queryは`Complete`になった場合だけ成功です。raw result、読みやすい形へ変換したresult、`recordsMatched`、`bytesScanned`は`EVIDENCE_DIR`へ保存されます。
 
-ConsoleのLogs Insightsでも同じlog groupと保存された時間帯を選び、query fileの内容を実行してください。生成画像やfixtureを、実際のConsole結果の代わりには使いません。
+ConsoleのLogs Insightsでも同じlog groupと保存された時間帯を選び、query fileの内容を実行して、6件と`ERROR` 2件を確認してください。
 
 ## 期待結果
 
@@ -205,14 +205,14 @@ Cleanup verified: chargeable residuals are absent and the exact guard was remove
 
 cleanup guardは、通常の削除を忘れた場合に備える期限付きの保護です。通常は自分でSection → commonの順に削除し、課金対象の残存確認が終わった後にguardを最後に削除します。
 
-最終成功表示後、post-guard verifierで同じcurrent identityを再検証し、guard削除後の全fixed residualをもう一度確認します。このscriptが成功した場合だけsole identity fileとprivate directoryを削除します。
+最終成功表示後、`post-guard-verify.sh`で現在のログイン先を再検証し、cleanup guardの削除後に対象resourceが残っていないことをもう一度確認します。このscriptが成功した場合だけ本人確認fileとその非公開directoryを削除します。
 
 ```bash
 "$COMMON_EKS_DIR/scripts/post-guard-verify.sh"
 unset CURRENT_STS_IDENTITY_FILE PRIVATE_EXECUTION_DIR
 ```
 
-途中でabortした場合もidentityを先に削除しません。現在identityを保持したままSection cleanup、common cleanup、残存0、guard-lastまで完了し、最後に`post-guard-verify.sh`を実行します。post-guard repeat zeroが失敗した場合はidentityを保持してfail closedになります。preflight中に作成前abortした場合も、固定resourceが不存在であることをcleanup手順とpost-guard verifierで確認してから破棄します。
+途中で停止した場合も本人確認fileを先に削除しません。現在のログイン先のままSection cleanup、common cleanup、残存0件の確認、cleanup guardの削除まで完了し、最後に`post-guard-verify.sh`を実行します。再確認に失敗した場合は本人確認fileを保持して停止します。preflightでresource作成前に停止した場合も、固定resourceが存在しないことをcleanup手順と`post-guard-verify.sh`で確認してから破棄します。
 
 必要な結果を手元へdownloadした後、CloudShellの`$HOME` 1 GBを圧迫する不要なcopyは削除できます。
 
@@ -237,7 +237,7 @@ python3 -B "$S4_DIR/analyze.py" --check
 python3 -B -m unittest discover -s "$S4_DIR/tests" -p 'test_*.py'
 ```
 
-この方法はlocalのsyntax/fixture validationだけです。CloudWatch、EKS、IAM、料金、Consoleを実行した証拠ではなく、成功したlive AWS runとして扱わないでください。live実行できない場合は、その理由を記録してここで停止します。
+この方法で確認できるのはlocalのsyntax/fixture validationだけです。CloudWatch、EKS、IAM、料金、Console上の動作は確認できません。AWSで実行できない場合はここで停止してください。
 
 ## Troubleshooting
 
@@ -249,11 +249,11 @@ python3 -B -m unittest discover -s "$S4_DIR/tests" -p 'test_*.py'
 - queryが`Complete`にならない: statusを保存して停止し、時間帯、log group、Region、permissionを確認します。
 - cleanup failure: 表示された残存resourceまたは権限errorを確認します。Section cleanup成功前にcommon cleanupへ進まず、検査をskipしません。
 - ownership label mismatch: 追加labelを無視して削除しません。作成元を確認し、判断なしにlabelを削除・上書きしません。
-- CloudShell再接続: 同じRegionの`$HOME` fileは残ります。Regionを再設定し、commonの`bind-current-identity.sh`をsourceしてsole bindingを再発見・再検証します。新しいprivate directoryは作りません。その後、期限とresource状態を確認し直します。
+- CloudShell再接続: 同じRegionの`$HOME` fileは残ります。Regionを再設定し、commonの`bind-current-identity.sh`をsourceして既存の本人確認fileを再検証します。新しいprivate directoryは作りません。その後、期限とresource状態を確認し直します。
 
 ## 安全設計の補足
 
-main scriptは、次の保護条件をすべて満たす場合だけ処理を続けます。違いがあれば安全側に停止します。
+各scriptは、次の保護条件をすべて満たす場合だけ処理を続けます。違いがあれば安全側に停止します。
 
 - common stackは固定名、東京Region、5つのownership tags、3つのoutputsを照合する
 - EKSはCloudFormationが付けるsystem tagsを含む8つのtags、private endpoint、現在のCloudShell `/32`だけを許可するpublic endpointを照合する
