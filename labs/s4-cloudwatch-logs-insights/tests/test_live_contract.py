@@ -667,20 +667,22 @@ class LiveContractTests(unittest.TestCase):
         ordered_headings = (
             "## 目的",
             "## 前提条件",
+            "## 進め方",
             "## 手順",
             "## 期待結果",
             "## Cleanup",
             "## コストと安全上の注意",
-            "## Fixture fallback",
+            "## AWSを使えない場合の確認",
             "## Troubleshooting",
-            "## 安全設計の補足",
             "## 公式資料",
         )
         for heading in ordered_headings:
             self.assertIn(heading, self.readme)
         positions = [self.readme.index(heading) for heading in ordered_headings]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(8, self.readme.count("ここまでの成功"))
+        self.assertEqual(9, self.readme.count("#### 操作"))
+        self.assertEqual(9, self.readme.count("#### この操作で確認すること"))
+        self.assertEqual(9, self.readme.count("#### 成功の目安"))
         for token in (
             "このハンズオンでは",
             "Namespace（名前空間）",
@@ -692,17 +694,24 @@ class LiveContractTests(unittest.TestCase):
             "最大15分",
             "最大6時間以内",
             "WorkPackage=c010-common-eks",
-            "localのsyntax/fixture validationだけ",
-            "account IDとARNが含まれる",
-            "画面、提出物、公開場所へ内容を共有しない",
-            "credentialも保存・共有しない",
+            "localのsyntaxとfixture validationだけ",
+            "AWS account IDとARNが含まれます",
+            "画面、提出物、公開場所へcopyまたは共有しない",
+            "credentialも保存または共有しない",
             "Console上の動作は確認できません",
+            "guardを最後",
+            "AWS手順の代わりにはなりません",
         ):
             self.assertIn(token, self.readme)
         for production_token in (
             "成功表示にaccount IDは含めません",
             "成功したlive AWS runとして扱わない",
             "過去runとのaccount比較",
+            "制作",
+            "収録",
+            "監査",
+            "証跡",
+            "画面へ出さなかった",
         ):
             self.assertNotIn(production_token, self.readme)
 

@@ -2,7 +2,7 @@
 # Sort key: UTF-8 package-relative path bytes, ordinal ascending. Format: lowercase SHA-256, two spaces, path, LF.
 # Excludes: artifact-inventory.sha256 itself and __pycache__/**.
 # Recorded files: 18.
-c43510291d9f55283f36fe873c5f8a3679aa7542145c9c8f33de6afc12f10669  README.md
+2af5c8199b4d563e1757573563ca8e4a5b655e70ff5110eaddd1156e8ba7e257  README.md
 308016b4059133b20c3a06411a8f4e861da860285505e8d94c91d2036dcb4f38  analyze.py
 de639c35843d89deb6274a1938f5c517463ad17a0e283c15d4bab0d75e4e069f  expected-results.json
 93c78e63b44b453f2e56dc0c94c8edc4f440c75c2fafa900bf499a00446d7b51  fixtures/cloudwatch-logs.jsonl
@@ -19,4 +19,4 @@ a42cdc8518938e8ddabde06c920bab32416002a387ab849ed939478808dfc9d5  scripts/prefli
 dddbfb3816b1af6de1e20b7057a4a70fb387cae2a93cc147f72a789abedf51e6  scripts/query-logs.sh
 e874c8a74bb5755e2f7965e21ae64de52f228943abb9748e83416547030bfdbc  scripts/verify-cleanup.sh
 e9272e45c7c7d041d1d1ac48e6ea973c1a33f25d343f9603ad43862aac10c4ff  tests/test_analyze.py
-ca55310a1343b8b903e81f6768afe808bdffdc61af115f93e65c0ad819186d2f  tests/test_live_contract.py
+9ecb9b9e3376fe0c39ef8fd7779e8a57b6b3b03a955a9747e6da274db7641137  tests/test_live_contract.py
