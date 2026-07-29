@@ -14,7 +14,8 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 3. 既存のlocal PowerShell教材を使うSectionでは、[PC側の前提条件確認](scripts/verify_prereqs.ps1)を実行します。
 4. Section 4は、[EKS PodログをCloudWatch Logs / Logs Insightsで追う](labs/s4-cloudwatch-logs-insights/README.md)を入口にします。既定環境はAWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBashです。local PowerShellは不要です。AWS CLI `2.12.3`以上、`kubectl`、`jq`、Python 3、preauthenticated console identity、Region別`$HOME` 1 GBの空きを確認します。同じcheckoutのcommon EKSを使い、Section scriptがnamespace `udemy4-s4-logs`、Job `s4-log-generator`、log group `/udemy4/c010/s4/20260725`、log stream `sample-workload`を作成し、Section cleanup scriptがそれらを削除・残存確認してからcommon cleanupを行います。
 5. Section 5は、[Pending / CrashLoopBackOffの初動切り分け](labs/s5-pod-resource-first-response/README.md)を入口にします。repository rootから`cd labs/s5-pod-resource-first-response`を実行し、そのREADMEに従って共通EKS基盤とSection scenarioを順に進めます。作成を許可された自分のAWSアカウントだけを使用し、約USD 0.97/6時間の基礎概算と変動要因を確認してから始めます。
-6. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
+6. Section 6は、[ServiceAccount・RBAC・IAMの関係を観察する](labs/s6-permissions-first-response/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り、権限を追加せずにKubernetesとAWSの判定層を分けて確認します。
+7. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
 
 ## 演習一覧
 
@@ -25,7 +26,7 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 | s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
 | s4-l2 / s4-l3 | 実EKS JobログをCloudWatch Logsへ送り、Logs Insightsで絞る。AWSを使えない場合はfixtureで回帰確認する | [labs/s4-cloudwatch-logs-insights/README.md](labs/s4-cloudwatch-logs-insights/README.md) |
 | s5-l3 / s5-l4 | 短命なEKS基盤でPendingとCrashLoopBackOffを調べる | [labs/s5-pod-resource-first-response/README.md](labs/s5-pod-resource-first-response/README.md) |
-| s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限を確認する | [labs/06-permissions-and-identity.md](labs/06-permissions-and-identity.md) |
+| s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限の関係を読み取り専用で確認する | [labs/s6-permissions-first-response/README.md](labs/s6-permissions-first-response/README.md) |
 | s7-l2 / s7-l3 | メトリクスやログが見えないときを切り分ける | [labs/07-observability-troubleshooting.md](labs/07-observability-troubleshooting.md) |
 | s8-l3 | 初動対応Runbookを作る | [templates/first-response-runbook.md](templates/first-response-runbook.md) |
 | s8-l4 | コスト確認と削除確認 | [docs/cost-and-cleanup.md](docs/cost-and-cleanup.md) |
