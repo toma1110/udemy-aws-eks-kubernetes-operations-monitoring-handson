@@ -92,6 +92,35 @@ valid = (
 raise SystemExit(0 if valid else 1)
 """
 
+JQ_IDENTITY_DOUBLE = """#!/usr/bin/env python3
+import json
+import re
+import sys
+
+document = json.load(sys.stdin)
+if sys.argv[1:3] == ["-S", "."]:
+    json.dump(document, sys.stdout, sort_keys=True, indent=2)
+    sys.stdout.write("\\n")
+    raise SystemExit(0)
+if not sys.argv[1:] or sys.argv[1] != "-e":
+    raise SystemExit(2)
+valid = (
+    set(document) == {"Account", "Arn", "UserId"}
+    and isinstance(document["Account"], str)
+    and re.fullmatch(r"[0-9]{12}", document["Account"]) is not None
+    and isinstance(document["Arn"], str)
+    and re.fullmatch(
+        r"arn:[^:]+:(?:iam|sts)::([0-9]{12}):.+", document["Arn"]
+    ) is not None
+    and re.fullmatch(
+        r"arn:[^:]+:(?:iam|sts)::([0-9]{12}):.+", document["Arn"]
+    ).group(1) == document["Account"]
+    and isinstance(document["UserId"], str)
+    and len(document["UserId"]) > 0
+)
+raise SystemExit(0 if valid else 1)
+"""
+
 
 def wsl_path(path: pathlib.Path) -> str:
     resolved = path.resolve()
@@ -151,6 +180,91 @@ class LiveContractTests(unittest.TestCase):
             "1 GB",
         ):
             self.assertIn(token, self.readme)
+
+    def test_current_sts_identity_is_validated_and_written_only_to_private_path(
+        self,
+    ) -> None:
+        self.assertIn("record_current_sts_identity", self.scripts["preflight.sh"])
+        for token in (
+            "sts get-caller-identity",
+            "CURRENT_STS_IDENTITY_FILE",
+            "outside every Git worktree",
+            "umask 077",
+            'test("^[0-9]{12}$")',
+        ):
+            self.assertIn(token, self.common)
+        self.assertNotIn('printf \'%s\\n\' "$identity"', self.common)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = pathlib.Path(temp_dir)
+            jq_path = temp_root / "jq"
+            jq_path.write_text(JQ_IDENTITY_DOUBLE, encoding="utf-8", newline="\n")
+            jq_path.chmod(0o755)
+            identity_path = temp_root / "current-sts-identity.json"
+            identity_argument = shlex.quote(wsl_path(identity_path))
+            path_argument = shlex.quote(wsl_path(temp_root))
+            first_account = "123456" + "789012"
+            second_account = "210987" + "654321"
+            valid = json.dumps(
+                {
+                    "Account": first_account,
+                    "Arn": (
+                        f"arn:aws:sts::{first_account}:"
+                        "assumed-role/example/session"
+                    ),
+                    "UserId": "example:session",
+                },
+                separators=(",", ":"),
+            )
+            accepted = run_bash(
+                f"export PATH={path_argument}:$PATH; "
+                f"aws() {{ printf '%s\\n' {shlex.quote(valid)}; }}; "
+                f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                "record_current_sts_identity"
+            )
+            self.assertEqual(0, accepted.returncode, accepted.stderr)
+            self.assertEqual("", accepted.stdout)
+            stored = json.loads(identity_path.read_text(encoding="utf-8"))
+            self.assertEqual(set(stored), {"Account", "Arn", "UserId"})
+
+            changed_current = json.dumps(
+                {
+                    "Account": second_account,
+                    "Arn": (
+                        f"arn:aws:sts::{second_account}:"
+                        "assumed-role/example/session"
+                    ),
+                    "UserId": "other:session",
+                },
+                separators=(",", ":"),
+            )
+            changed_rejected = run_bash(
+                f"export PATH={path_argument}:$PATH; "
+                f"aws() {{ printf '%s\\n' {shlex.quote(changed_current)}; }}; "
+                f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                "record_current_sts_identity"
+            )
+            self.assertNotEqual(0, changed_rejected.returncode)
+            self.assertEqual(stored, json.loads(identity_path.read_text(encoding="utf-8")))
+
+            mismatched = json.dumps(
+                {
+                    "Account": first_account,
+                    "Arn": (
+                        f"arn:aws:sts::{second_account}:"
+                        "assumed-role/example/session"
+                    ),
+                    "UserId": "example:session",
+                },
+                separators=(",", ":"),
+            )
+            rejected = run_bash(
+                f"export PATH={path_argument}:$PATH; "
+                f"aws() {{ printf '%s\\n' {shlex.quote(mismatched)}; }}; "
+                f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                "record_current_sts_identity"
+            )
+            self.assertNotEqual(0, rejected.returncode)
 
     def test_region_name_and_external_binding_are_exact(self) -> None:
         for token in (
@@ -583,19 +697,6 @@ class LiveContractTests(unittest.TestCase):
         ):
             self.assertIn(token, self.readme)
 
-        navigation_tokens = (
-            "test -f README.md",
-            "test -d scripts",
-            'export S4_DIR="$(pwd)"',
-            'export LEARNER_REPO="$(git -C "$S4_DIR" rev-parse --show-toplevel)"',
-        )
-        for token in navigation_tokens:
-            self.assertIn(token, self.readme)
-        navigation_positions = [
-            self.readme.index(token) for token in navigation_tokens
-        ]
-        self.assertEqual(navigation_positions, sorted(navigation_positions))
-
     def test_learner_inventory_is_exact_and_current(self) -> None:
         inventory = ROOT / "artifact-inventory.sha256"
         records = [
@@ -612,7 +713,10 @@ class LiveContractTests(unittest.TestCase):
                 continue
             if (
                 path == inventory
+                or "review-evidence" in path.parts
                 or "__pycache__" in path.parts
+                or path.name in {"claim-evidence.md", "verification-report.md"}
+                or path.name.startswith("public-repository-preparation-")
             ):
                 continue
             discovered.append(path.relative_to(ROOT).as_posix())

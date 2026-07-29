@@ -2,7 +2,7 @@
 # Sort key: UTF-8 package-relative path bytes, ordinal ascending. Format: lowercase SHA-256, two spaces, path, LF.
 # Excludes: artifact-inventory.sha256 itself and __pycache__/**.
 # Recorded files: 18.
-517714d32bf4b82173ad9514e3eff290ae735d3481d27b5a0bd00d8ed2ac1574  README.md
+085696a374336f61004e356ec2d171534f1b5476ad9e5e36bd6ced09c77c9f66  README.md
 308016b4059133b20c3a06411a8f4e861da860285505e8d94c91d2036dcb4f38  analyze.py
 de639c35843d89deb6274a1938f5c517463ad17a0e283c15d4bab0d75e4e069f  expected-results.json
 93c78e63b44b453f2e56dc0c94c8edc4f440c75c2fafa900bf499a00446d7b51  fixtures/cloudwatch-logs.jsonl
@@ -13,10 +13,10 @@ c788f08a4dc94e4b8ce98f2d7190c09f6d19ad1efeaef5138050d7e9a87a655b  manifests/10-l
 0762751edee630324a6772f5a5d6fd0388876f779ec8c87af1b8445c45d66d8d  queries/errors.logs-insights
 6961587f67bbc21ca949b51a5eafac655e9853b137548cd52ecd886dc557b149  scripts/apply-workload.sh
 383d330346f4e0c334c260b4d5e539c3b18193121335647363eda19115bbefdf  scripts/cleanup-section.sh
-ba456db44f49ebd8140e0da6c27c5b82c272a230ad8ecf9030d3645b1a9c44aa  scripts/common.sh
-6bbe0d51b49e1b752e75ffd4bf1162403db131c53d2800f572c790ed32a7cfc1  scripts/preflight.sh
+44398e2355db22ae1ba73d211324a3a5d776f67a6bbd3c84b81383c5e4dcb952  scripts/common.sh
+a42cdc8518938e8ddabde06c920bab32416002a387ab849ed939478808dfc9d5  scripts/preflight.sh
 550a02ed441a33b966735dbe9d9ed43ae4ed406f9fdb14ba4273c89642ea76d3  scripts/publish-logs.sh
 dddbfb3816b1af6de1e20b7057a4a70fb387cae2a93cc147f72a789abedf51e6  scripts/query-logs.sh
 e874c8a74bb5755e2f7965e21ae64de52f228943abb9748e83416547030bfdbc  scripts/verify-cleanup.sh
 e9272e45c7c7d041d1d1ac48e6ea973c1a33f25d343f9603ad43862aac10c4ff  tests/test_analyze.py
-d6a5cdd18c5a111292b37cf16e2f6f6b0952a5fd1028a8319aafa8b51e53a9c6  tests/test_live_contract.py
+6807b1d9a91a3ee39eb99cabaf2e3022399991eaa5350c5caac5cb0388c62977  tests/test_live_contract.py

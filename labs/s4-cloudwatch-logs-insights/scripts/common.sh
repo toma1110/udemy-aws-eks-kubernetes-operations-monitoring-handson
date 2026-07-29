@@ -80,6 +80,62 @@ aws_json() {
   aws "$@" --no-cli-pager --output json
 }
 
+record_current_sts_identity() {
+  local identity_file="${CURRENT_STS_IDENTITY_FILE:-}"
+  [[ "$identity_file" == /* ]] || {
+    die "Set CURRENT_STS_IDENTITY_FILE to an absolute run-private path outside Git."
+    return 1
+  }
+  local private_dir
+  private_dir="$(dirname -- "$identity_file")"
+  [[ -d "$private_dir" ]] || {
+    die "The current-run private identity directory must already exist."
+    return 1
+  }
+  if git -C "$private_dir" rev-parse --show-toplevel >/dev/null 2>&1; then
+    die "Current STS identity evidence must remain outside every Git worktree."
+    return 1
+  fi
+  local identity temporary
+  identity="$(aws_json sts get-caller-identity)" || {
+    die "Current default CloudShell STS identity could not be obtained."
+    return 1
+  }
+  jq -e '
+    . as $identity |
+    (keys | sort) == ["Account", "Arn", "UserId"] and
+    ($identity.Account | type == "string" and test("^[0-9]{12}$")) and
+    ($identity.Arn | type == "string" and
+      test("^arn:[^:]+:(iam|sts)::[0-9]{12}:.+$")) and
+    (($identity.Arn | capture("^arn:[^:]+:(?:iam|sts)::(?<account>[0-9]{12}):").account)
+      == $identity.Account) and
+    ($identity.UserId | type == "string" and length > 0)
+  ' <<<"$identity" >/dev/null || {
+    die "Current default CloudShell STS identity is invalid."
+    return 1
+  }
+  temporary="${identity_file}.tmp.$$"
+  (umask 077; jq -S . <<<"$identity" >"$temporary") || {
+    rm -f -- "$temporary"
+    die "Current STS identity evidence could not be written."
+    return 1
+  }
+  if [[ -f "$identity_file" ]]; then
+    cmp -s -- "$identity_file" "$temporary" || {
+      rm -f -- "$temporary"
+      die "Current default STS identity changed within this run."
+      return 1
+    }
+    rm -f -- "$temporary"
+    return 0
+  fi
+  mv -f -- "$temporary" "$identity_file" || {
+    rm -f -- "$temporary"
+    die "Current STS identity evidence could not be finalized."
+    return 1
+  }
+}
+
 assert_exact_stack_tags() {
   local tags_json="$1"
   python3 - "$tags_json" "$TEMPLATE_CONTRACT" <<'PY' ||

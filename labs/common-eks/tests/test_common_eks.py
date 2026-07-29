@@ -6,6 +6,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -13,6 +14,35 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+JQ_IDENTITY_DOUBLE = """#!/usr/bin/env python3
+import json
+import re
+import sys
+
+document = json.load(sys.stdin)
+if sys.argv[1:3] == ["-S", "."]:
+    json.dump(document, sys.stdout, sort_keys=True, indent=2)
+    sys.stdout.write("\\n")
+    raise SystemExit(0)
+if not sys.argv[1:] or sys.argv[1] != "-e":
+    raise SystemExit(2)
+valid = (
+    set(document) == {"Account", "Arn", "UserId"}
+    and isinstance(document["Account"], str)
+    and re.fullmatch(r"[0-9]{12}", document["Account"]) is not None
+    and isinstance(document["Arn"], str)
+    and re.fullmatch(
+        r"arn:[^:]+:(?:iam|sts)::([0-9]{12}):.+", document["Arn"]
+    ) is not None
+    and re.fullmatch(
+        r"arn:[^:]+:(?:iam|sts)::([0-9]{12}):.+", document["Arn"]
+    ).group(1) == document["Account"]
+    and isinstance(document["UserId"], str)
+    and len(document["UserId"]) > 0
+)
+raise SystemExit(0 if valid else 1)
+"""
 
 
 def wsl_path(path):
@@ -73,6 +103,8 @@ class CommonEksContractTests(unittest.TestCase):
                 "common.sh",
                 "create.sh",
                 "delete.sh",
+                "bind-current-identity.sh",
+                "post-guard-verify.sh",
                 "preflight.sh",
                 "recover-cidr.sh",
                 "status.sh",
@@ -85,6 +117,7 @@ class CommonEksContractTests(unittest.TestCase):
         for token in (
             "AWS CloudShell",
             "Bash",
+            "local PowerShellは不要",
             "aws --version",
             "kubectl version --client --output=json",
             "ap-northeast-1",
@@ -92,19 +125,672 @@ class CommonEksContractTests(unittest.TestCase):
             "1 GB",
         ):
             self.assertIn(token, readme)
-        for internal_term in (
-            "runtime ownership",
-            "exact workflow",
-            "atomic",
-            "ownership-bound",
-            "Scheduler",
-            "Step Functions",
-            "Lambda",
-            "RBAC",
-            "fail closed",
-            "fail-closed",
+        self.assertNotIn("受講者向けの既定実行環境", readme)
+
+    def test_current_sts_identity_is_validated_and_written_only_to_private_path(self):
+        preflight = self.scripts["preflight.sh"]
+        common = self.scripts["common.sh"]
+        self.assertIn("record_current_sts_identity", preflight)
+        for token in (
+            "sts get-caller-identity",
+            "CURRENT_STS_IDENTITY_FILE",
+            "outside every Git worktree",
+            "umask 077",
+            'test("^[0-9]{12}$")',
         ):
-            self.assertNotIn(internal_term, readme)
+            self.assertIn(token, common)
+        self.assertNotIn('printf \'%s\\n\' "$identity"', common)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            jq_path = temp_root / "jq"
+            jq_path.write_text(JQ_IDENTITY_DOUBLE, encoding="utf-8", newline="\n")
+            jq_path.chmod(0o755)
+            identity_path = temp_root / "current-sts-identity.json"
+            identity_argument = shlex.quote(wsl_path(identity_path))
+            path_argument = shlex.quote(wsl_path(temp_root))
+            first_account = "123456" + "789012"
+            second_account = "210987" + "654321"
+            valid = json.dumps(
+                {
+                    "Account": first_account,
+                    "Arn": (
+                        f"arn:aws:sts::{first_account}:"
+                        "assumed-role/example/session"
+                    ),
+                    "UserId": "example:session",
+                },
+                separators=(",", ":"),
+            )
+            accepted = run_bash(
+                f"export PATH={path_argument}:$PATH; "
+                f"aws() {{ printf '%s\\n' {shlex.quote(valid)}; }}; "
+                f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                "record_current_sts_identity"
+            )
+            self.assertEqual(0, accepted.returncode, accepted.stderr)
+            self.assertEqual("", accepted.stdout)
+            stored = json.loads(identity_path.read_text(encoding="utf-8"))
+            self.assertEqual(set(stored), {"Account", "Arn", "UserId"})
+
+            changed_current = json.dumps(
+                {
+                    "Account": second_account,
+                    "Arn": (
+                        f"arn:aws:sts::{second_account}:"
+                        "assumed-role/example/session"
+                    ),
+                    "UserId": "other:session",
+                },
+                separators=(",", ":"),
+            )
+            changed_rejected = run_bash(
+                f"export PATH={path_argument}:$PATH; "
+                f"aws() {{ printf '%s\\n' {shlex.quote(changed_current)}; }}; "
+                f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                "record_current_sts_identity"
+            )
+            self.assertNotEqual(0, changed_rejected.returncode)
+            self.assertEqual(stored, json.loads(identity_path.read_text(encoding="utf-8")))
+
+            mismatched = json.dumps(
+                {
+                    "Account": first_account,
+                    "Arn": (
+                        f"arn:aws:sts::{second_account}:"
+                        "assumed-role/example/session"
+                    ),
+                    "UserId": "example:session",
+                },
+                separators=(",", ":"),
+            )
+            rejected = run_bash(
+                f"export PATH={path_argument}:$PATH; "
+                f"aws() {{ printf '%s\\n' {shlex.quote(mismatched)}; }}; "
+                f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                "record_current_sts_identity"
+            )
+            self.assertNotEqual(0, rejected.returncode)
+
+    def test_single_identity_lifecycle_and_post_guard_repeat_zero(self):
+        common_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        s4_readme = (
+            ROOT.parent / "s4-cloudwatch-logs-insights" / "README.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn('source "$COMMON_EKS_DIR/scripts/bind-current-identity.sh"', common_readme)
+        self.assertIn(
+            "$HOME/eks-monitoring-private/c010-s4/current-run/current-sts-identity.json",
+            common_readme,
+        )
+        self.assertNotIn(
+            'export PRIVATE_EXECUTION_DIR="$HOME/eks-monitoring-private/s4-',
+            s4_readme,
+        )
+        self.assertNotIn(
+            'export CURRENT_STS_IDENTITY_FILE="$PRIVATE_EXECUTION_DIR/',
+            s4_readme,
+        )
+        for token in (
+            'source "$COMMON_EKS_DIR/scripts/bind-current-identity.sh"',
+            "Section 4用の2個目",
+            'scripts/post-guard-verify.sh"',
+        ):
+            self.assertIn(token, s4_readme)
+
+        bind_script = ROOT / "scripts" / "bind-current-identity.sh"
+        bind_text = bind_script.read_text(encoding="utf-8")
+        for token in (
+            "c010-s4",
+            "current-run",
+            "Multiple retained current-run identity candidates",
+            "retained identity exists at a foreign path",
+            "Malformed or foreign retained private artifacts",
+            "record_current_sts_identity",
+        ):
+            self.assertIn(token, bind_text)
+
+        with tempfile.TemporaryDirectory() as bind_temp:
+            bind_root = Path(bind_temp)
+            jq_path = bind_root / "jq"
+            jq_path.write_text(JQ_IDENTITY_DOUBLE, encoding="utf-8", newline="\n")
+            jq_path.chmod(0o755)
+            home = bind_root / "home"
+            home.mkdir()
+            path_argument = shlex.quote(wsl_path(bind_root))
+            home_argument = shlex.quote(wsl_path(home))
+            bind_argument = shlex.quote(wsl_path(bind_script))
+            first_account = "123456" + "789012"
+            second_account = "210987" + "654321"
+
+            def identity_document(account: str) -> str:
+                return json.dumps(
+                    {
+                        "Account": account,
+                        "Arn": (
+                            f"arn:aws:sts::{account}:"
+                            "assumed-role/example/session"
+                        ),
+                        "UserId": "example:session",
+                    },
+                    separators=(",", ":"),
+                )
+
+            def bind_at(
+                target_home: Path,
+                account: str,
+                *,
+                raw_document: str | None = None,
+                prelude: str = "",
+                command_path: Path | None = None,
+            ) -> subprocess.CompletedProcess[str]:
+                document = raw_document or identity_document(account)
+                target_home_argument = shlex.quote(wsl_path(target_home))
+                command_path_argument = shlex.quote(
+                    wsl_path(command_path or bind_root)
+                )
+                result = subprocess.run(
+                    ["bash"],
+                    input=(
+                        "set -euo pipefail\n"
+                        f"export HOME={target_home_argument}\n"
+                        f"export PATH={command_path_argument}:$PATH\n"
+                        f"aws() {{ printf '%s\\n' {shlex.quote(document)}; }}\n"
+                        "export -f aws\n"
+                        f"{prelude}\n"
+                        f"if source {bind_argument}; then\n"
+                        "  bind_status=0\n"
+                        "else\n"
+                        "  bind_status=$?\n"
+                        "fi\n"
+                        'if ((bind_status != 0)); then exit "$bind_status"; fi\n'
+                        'test "$PRIVATE_EXECUTION_DIR" = '
+                        '"$HOME/eks-monitoring-private/c010-s4/current-run"\n'
+                        'test "$CURRENT_STS_IDENTITY_FILE" = '
+                        '"$PRIVATE_EXECUTION_DIR/current-sts-identity.json"\n'
+                    ).encode(),
+                    capture_output=True,
+                    check=False,
+                )
+                result.stdout = result.stdout.decode()
+                result.stderr = result.stderr.decode()
+                return result
+
+            def bind(account: str) -> subprocess.CompletedProcess[str]:
+                return bind_at(home, account)
+
+            identity_path = (
+                home
+                / "eks-monitoring-private"
+                / "c010-s4"
+                / "current-run"
+                / "current-sts-identity.json"
+            )
+            direct_home = bind_root / "home-direct"
+            direct_home.mkdir()
+            direct = run_bash(
+                f"export HOME={shlex.quote(wsl_path(direct_home))}; "
+                f"export PATH={path_argument}:$PATH; "
+                f"bash {bind_argument}"
+            )
+            self.assertNotEqual(0, direct.returncode)
+            self.assertFalse((direct_home / "eks-monitoring-private").exists())
+
+            initial = bind(first_account)
+            self.assertEqual(0, initial.returncode, initial.stderr)
+            initial_bytes = identity_path.read_bytes()
+            self.assertEqual(
+                [identity_path],
+                list((home / "eks-monitoring-private" / "c010-s4").rglob(
+                    "current-sts-identity.json"
+                )),
+            )
+
+            reconnect = bind(first_account)
+            self.assertEqual(0, reconnect.returncode, reconnect.stderr)
+            self.assertEqual(initial_bytes, identity_path.read_bytes())
+
+            second_find_failure = bind_at(
+                home,
+                first_account,
+                prelude=(
+                    "find_call_count=0; "
+                    "find() { find_call_count=$((find_call_count + 1)); "
+                    "if ((find_call_count == 2)); then return 43; fi; "
+                    'command find "$@"; }; export -f find'
+                ),
+            )
+            self.assertEqual(43, second_find_failure.returncode)
+            self.assertEqual(initial_bytes, identity_path.read_bytes())
+            self.assertFalse(
+                list(
+                    (home / "eks-monitoring-private").glob(
+                        ".c010-s4-discovery.*"
+                    )
+                )
+            )
+            second_read_failure = bind_at(
+                home,
+                first_account,
+                prelude=(
+                    "mapfile_call_count=0; "
+                    "mapfile() { "
+                    "mapfile_call_count=$((mapfile_call_count + 1)); "
+                    "if ((mapfile_call_count == 2)); then return 46; fi; "
+                    'builtin mapfile "$@"; }'
+                ),
+            )
+            self.assertEqual(46, second_read_failure.returncode)
+            self.assertEqual(initial_bytes, identity_path.read_bytes())
+            self.assertFalse(
+                list(
+                    (home / "eks-monitoring-private").glob(
+                        ".c010-s4-discovery.*"
+                    )
+                )
+            )
+
+            mismatch = bind(second_account)
+            self.assertNotEqual(0, mismatch.returncode)
+            self.assertEqual(initial_bytes, identity_path.read_bytes())
+
+            foreign_dir = (
+                home / "eks-monitoring-private" / "c010-s4" / "foreign-run"
+            )
+            foreign_dir.mkdir()
+            foreign_identity = foreign_dir / "current-sts-identity.json"
+            foreign_identity.write_bytes(initial_bytes)
+            multiple = bind(first_account)
+            self.assertNotEqual(0, multiple.returncode)
+            self.assertEqual(initial_bytes, identity_path.read_bytes())
+            foreign_identity.unlink()
+            foreign_dir.rmdir()
+
+            expected_dir = identity_path.parent
+            foreign_dir.mkdir()
+            identity_path.replace(foreign_identity)
+            foreign_only = bind(first_account)
+            self.assertNotEqual(0, foreign_only.returncode)
+            self.assertFalse(identity_path.exists())
+            foreign_bytes = foreign_identity.read_bytes()
+            foreign_find_failure = bind_at(
+                home,
+                first_account,
+                prelude=(
+                    "find_call_count=0; "
+                    "find() { find_call_count=$((find_call_count + 1)); "
+                    "if ((find_call_count == 1)); then return 77; fi; "
+                    'command find "$@"; }; export -f find'
+                ),
+            )
+            self.assertNotEqual(0, foreign_find_failure.returncode)
+            self.assertEqual(foreign_bytes, foreign_identity.read_bytes())
+            self.assertFalse(
+                list(
+                    (home / "eks-monitoring-private").glob(
+                        ".c010-s4-discovery.*"
+                    )
+                )
+            )
+            foreign_identity.replace(identity_path)
+            foreign_dir.rmdir()
+
+            identity_path.write_text("{malformed\n", encoding="utf-8", newline="\n")
+            malformed = bind(first_account)
+            self.assertNotEqual(0, malformed.returncode)
+            self.assertEqual(b"{malformed\n", identity_path.read_bytes())
+            identity_path.write_bytes(initial_bytes)
+
+            unexpected = expected_dir / "unexpected.txt"
+            unexpected.write_text("retain\n", encoding="utf-8", newline="\n")
+            unexpected_shape = bind(first_account)
+            self.assertNotEqual(0, unexpected_shape.returncode)
+            self.assertEqual(initial_bytes, identity_path.read_bytes())
+            self.assertEqual("retain\n", unexpected.read_text(encoding="utf-8"))
+            unexpected.unlink()
+
+            def assert_atomic_failure_has_no_orphan(
+                label: str,
+                *,
+                raw_document: str | None = None,
+                prelude: str = "",
+                command_path: Path | None = None,
+            ) -> Path:
+                fault_home = bind_root / f"home-{label}"
+                fault_home.mkdir()
+                result = bind_at(
+                    fault_home,
+                    first_account,
+                    raw_document=raw_document,
+                    prelude=prelude,
+                    command_path=command_path,
+                )
+                self.assertNotEqual(0, result.returncode, label)
+                course_root = (
+                    fault_home / "eks-monitoring-private" / "c010-s4"
+                )
+                self.assertFalse((course_root / "current-run").exists(), label)
+                self.assertFalse(
+                    list(course_root.glob(".current-run.tmp.*"))
+                    if course_root.exists()
+                    else [],
+                    label,
+                )
+                discovery_parent = fault_home / "eks-monitoring-private"
+                self.assertFalse(
+                    list(discovery_parent.glob(".c010-s4-discovery.*"))
+                    if discovery_parent.exists()
+                    else [],
+                    label,
+                )
+                return fault_home
+
+            first_find_home = assert_atomic_failure_has_no_orphan(
+                "find-first",
+                prelude="find() { return 42; }; export -f find",
+            )
+            first_find_failure = bind_at(
+                bind_root / "home-find-first-status",
+                first_account,
+                prelude="find() { return 42; }; export -f find",
+            )
+            self.assertEqual(42, first_find_failure.returncode)
+            first_find_retry = bind_at(first_find_home, first_account)
+            self.assertEqual(
+                0, first_find_retry.returncode, first_find_retry.stderr
+            )
+            read_home = assert_atomic_failure_has_no_orphan(
+                "read",
+                prelude="mapfile() { return 45; }",
+            )
+            first_read_failure = bind_at(
+                bind_root / "home-read-first-status",
+                first_account,
+                prelude="mapfile() { return 45; }",
+            )
+            self.assertEqual(45, first_read_failure.returncode)
+            read_retry = bind_at(read_home, first_account)
+            self.assertEqual(0, read_retry.returncode, read_retry.stderr)
+            third_find_home = assert_atomic_failure_has_no_orphan(
+                "find-third",
+                prelude=(
+                    "find_call_count=0; "
+                    "find() { find_call_count=$((find_call_count + 1)); "
+                    "if ((find_call_count == 3)); then return 44; fi; "
+                    'command find "$@"; }; export -f find'
+                ),
+            )
+            third_find_status_home = bind_root / "home-find-third-status"
+            third_find_status_home.mkdir()
+            third_find_failure = bind_at(
+                third_find_status_home,
+                first_account,
+                prelude=(
+                    "find_call_count=0; "
+                    "find() { find_call_count=$((find_call_count + 1)); "
+                    "if ((find_call_count == 3)); then return 44; fi; "
+                    'command find "$@"; }; export -f find'
+                ),
+            )
+            self.assertEqual(44, third_find_failure.returncode)
+            third_find_retry = bind_at(third_find_home, first_account)
+            self.assertEqual(
+                0, third_find_retry.returncode, third_find_retry.stderr
+            )
+            third_read_home = assert_atomic_failure_has_no_orphan(
+                "read-third",
+                prelude=(
+                    "mapfile_call_count=0; "
+                    "mapfile() { "
+                    "mapfile_call_count=$((mapfile_call_count + 1)); "
+                    "if ((mapfile_call_count == 3)); then return 47; fi; "
+                    'builtin mapfile "$@"; }'
+                ),
+            )
+            third_read_status_home = bind_root / "home-read-third-status"
+            third_read_status_home.mkdir()
+            third_read_failure = bind_at(
+                third_read_status_home,
+                first_account,
+                prelude=(
+                    "mapfile_call_count=0; "
+                    "mapfile() { "
+                    "mapfile_call_count=$((mapfile_call_count + 1)); "
+                    "if ((mapfile_call_count == 3)); then return 47; fi; "
+                    'builtin mapfile "$@"; }'
+                ),
+            )
+            self.assertEqual(47, third_read_failure.returncode)
+            third_read_retry = bind_at(third_read_home, first_account)
+            self.assertEqual(
+                0, third_read_retry.returncode, third_read_retry.stderr
+            )
+
+            private_env_home = assert_atomic_failure_has_no_orphan(
+                "private-env",
+                prelude="export PRIVATE_EXECUTION_DIR=/tmp/foreign-private-binding",
+            )
+            self.assertFalse(
+                (private_env_home / "eks-monitoring-private").exists()
+            )
+            identity_env_home = assert_atomic_failure_has_no_orphan(
+                "identity-env",
+                prelude=(
+                    "export CURRENT_STS_IDENTITY_FILE="
+                    "/tmp/foreign-private-binding/identity.json"
+                ),
+            )
+            self.assertFalse(
+                (identity_env_home / "eks-monitoring-private").exists()
+            )
+            orphan_home = bind_root / "home-orphan"
+            orphan_dir = (
+                orphan_home
+                / "eks-monitoring-private"
+                / "c010-s4"
+                / "current-run"
+            )
+            orphan_dir.mkdir(parents=True)
+            orphan_file = orphan_dir / "orphan.txt"
+            orphan_file.write_text("retain\n", encoding="utf-8", newline="\n")
+            orphan_shape = bind_at(orphan_home, first_account)
+            self.assertNotEqual(0, orphan_shape.returncode)
+            self.assertEqual("retain\n", orphan_file.read_text(encoding="utf-8"))
+            self.assertFalse(
+                (orphan_dir / "current-sts-identity.json").exists()
+            )
+            mkdir_home = assert_atomic_failure_has_no_orphan(
+                "mkdir",
+                prelude="mkdir() { return 75; }; export -f mkdir",
+            )
+            mkdir_retry = bind_at(mkdir_home, first_account)
+            self.assertEqual(0, mkdir_retry.returncode, mkdir_retry.stderr)
+            mktemp_home = assert_atomic_failure_has_no_orphan(
+                "mktemp",
+                prelude="mktemp() { return 73; }; export -f mktemp",
+            )
+            mktemp_retry = bind_at(mktemp_home, first_account)
+            self.assertEqual(0, mktemp_retry.returncode, mktemp_retry.stderr)
+
+            chmod_home = assert_atomic_failure_has_no_orphan(
+                "chmod",
+                prelude="chmod() { return 74; }; export -f chmod",
+            )
+            chmod_retry = bind_at(chmod_home, first_account)
+            self.assertEqual(0, chmod_retry.returncode, chmod_retry.stderr)
+
+            sts_home = bind_root / "home-sts"
+            sts_home.mkdir()
+            sts_failure = subprocess.run(
+                ["bash"],
+                input=(
+                    "set -euo pipefail\n"
+                    f"export HOME={shlex.quote(wsl_path(sts_home))}\n"
+                    f"export PATH={path_argument}:$PATH\n"
+                    "aws() { return 1; }\n"
+                    "export -f aws\n"
+                    f"if source {bind_argument}; then exit 0; "
+                    "else exit $?; fi\n"
+                ).encode(),
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(0, sts_failure.returncode)
+            self.assertFalse((sts_home / "eks-monitoring-private").exists())
+
+            malformed_home = assert_atomic_failure_has_no_orphan(
+                "malformed", raw_document="{malformed"
+            )
+            malformed_retry = bind_at(malformed_home, first_account)
+            self.assertEqual(0, malformed_retry.returncode, malformed_retry.stderr)
+
+            write_bin = bind_root / "write-bin"
+            write_bin.mkdir()
+            write_jq = write_bin / "jq"
+            write_jq.write_text(
+                (
+                    "#!/usr/bin/env bash\n"
+                    "if [[ \"$1\" == \"-S\" ]]; then exit 71; fi\n"
+                    f"exec {shlex.quote(wsl_path(jq_path))} \"$@\"\n"
+                ),
+                encoding="utf-8",
+                newline="\n",
+            )
+            write_jq.chmod(0o755)
+            write_home = assert_atomic_failure_has_no_orphan(
+                "write", command_path=write_bin
+            )
+            write_retry = bind_at(write_home, first_account)
+            self.assertEqual(0, write_retry.returncode, write_retry.stderr)
+
+            finalize_home = assert_atomic_failure_has_no_orphan(
+                "finalize",
+                prelude=(
+                    "mv() { if [[ \"$1\" == \"-T\" ]]; then return 72; fi; "
+                    "command mv \"$@\"; }; export -f mv"
+                ),
+            )
+            finalize_retry = bind_at(finalize_home, first_account)
+            self.assertEqual(0, finalize_retry.returncode, finalize_retry.stderr)
+
+            collision_home = bind_root / "home-collision"
+            collision_home.mkdir()
+            collision_expected = (
+                collision_home
+                / "eks-monitoring-private"
+                / "c010-s4"
+                / "current-run"
+            )
+            collision_prelude = (
+                "mv() { if [[ \"$1\" == \"-T\" ]]; then "
+                f"mkdir -p {shlex.quote(wsl_path(collision_expected))}; "
+                f"cp \"$4/current-sts-identity.json\" "
+                f"{shlex.quote(wsl_path(collision_expected / 'current-sts-identity.json'))}; "
+                "return 0; fi; command mv \"$@\"; }; export -f mv"
+            )
+            collision = bind_at(
+                collision_home,
+                first_account,
+                prelude=collision_prelude,
+            )
+            self.assertNotEqual(0, collision.returncode)
+            collision_identity = collision_expected / "current-sts-identity.json"
+            self.assertTrue(collision_identity.is_file())
+            self.assertFalse(
+                list(collision_expected.parent.glob(".current-run.tmp.*"))
+            )
+            self.assertFalse(
+                list(
+                    (collision_home / "eks-monitoring-private").glob(
+                        ".c010-s4-discovery.*"
+                    )
+                )
+            )
+            collision_bytes = collision_identity.read_bytes()
+            collision_retry = bind_at(collision_home, first_account)
+            self.assertEqual(
+                0, collision_retry.returncode, collision_retry.stderr
+            )
+            self.assertEqual(collision_bytes, collision_identity.read_bytes())
+
+        post_guard = ROOT / "scripts" / "post-guard-verify.sh"
+        post_text = post_guard.read_text(encoding="utf-8")
+        self.assertLess(
+            post_text.index("record_current_sts_identity"),
+            post_text.index("aws_zero"),
+        )
+        self.assertLess(
+            post_text.index('aws_zero "Cleanup state machine"'),
+            post_text.index('rm -f -- "$CURRENT_STS_IDENTITY_FILE"'),
+        )
+        self.assertLess(
+            post_text.index('rm -f -- "$CURRENT_STS_IDENTITY_FILE"'),
+            post_text.index('rmdir -- "$PRIVATE_EXECUTION_DIR"'),
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            jq_path = temp_root / "jq"
+            jq_path.write_text(JQ_IDENTITY_DOUBLE, encoding="utf-8", newline="\n")
+            jq_path.chmod(0o755)
+            private_dir = temp_root / "private"
+            identity_path = private_dir / "current-sts-identity.json"
+            post_argument = shlex.quote(wsl_path(post_guard))
+            path_argument = shlex.quote(wsl_path(temp_root))
+            private_argument = shlex.quote(wsl_path(private_dir))
+            identity_argument = shlex.quote(wsl_path(identity_path))
+            account = "123456" + "789012"
+            identity = json.dumps(
+                {
+                    "Account": account,
+                    "Arn": f"arn:aws:sts::{account}:assumed-role/example/session",
+                    "UserId": "example:session",
+                },
+                separators=(",", ":"),
+            )
+            aws_double = (
+                "aws() { "
+                f"if [[ \"$1 $2\" == 'sts get-caller-identity' ]]; then "
+                f"printf '%s\\n' {shlex.quote(identity)}; return 0; fi; "
+                "case \"$1 $2\" in "
+                "'cloudformation describe-stacks') "
+                "printf 'ValidationError: stack does not exist\\n' >&2; return 1 ;; "
+                "'eks describe-cluster') "
+                "printf 'ResourceNotFoundException\\n' >&2; return 1 ;; "
+                "'scheduler get-schedule'|'lambda get-function') "
+                "printf 'ResourceNotFoundException\\n' >&2; return 1 ;; "
+                "'iam get-role') printf 'NoSuchEntity\\n' >&2; return 1 ;; "
+                "esac; "
+                "if [[ \"${FAIL_RESIDUAL:-0}\" == 1 && \"$1 $2\" == "
+                "'ec2 describe-volumes' ]]; then printf '1\\n'; "
+                "else printf '0\\n'; fi; "
+                "}; export -f aws; "
+            )
+
+            def invoke(fail_residual: bool) -> subprocess.CompletedProcess[str]:
+                private_dir.mkdir(exist_ok=True)
+                identity_path.write_text(
+                    json.dumps(json.loads(identity), sort_keys=True, indent=2) + "\n",
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                return run_bash(
+                    f"export PATH={path_argument}:$PATH; "
+                    f"export PRIVATE_EXECUTION_DIR={private_argument}; "
+                    f"export CURRENT_STS_IDENTITY_FILE={identity_argument}; "
+                    f"export FAIL_RESIDUAL={1 if fail_residual else 0}; "
+                    f"{aws_double}"
+                    f"bash {post_argument}"
+                )
+
+            failed = invoke(True)
+            self.assertNotEqual(0, failed.returncode)
+            self.assertTrue(identity_path.is_file())
+            self.assertTrue(private_dir.is_dir())
+
+            passed = invoke(False)
+            self.assertEqual(0, passed.returncode, passed.stderr)
+            self.assertFalse(identity_path.exists())
+            self.assertFalse(private_dir.exists())
 
     def test_template_parses_and_has_required_resources(self):
         resources = self.template["Resources"]
@@ -1131,10 +1817,9 @@ class CommonEksContractTests(unittest.TestCase):
             "約USD 0.97",
             "実請求",
             "scripts/delete.sh",
+            "scripts/verify-cleanup.sh",
             "Section 4",
-            "Section 5を実行した場合",
-            '"$S5_DIR/scripts/cleanup-section.sh"',
-            "Section 5だけを実行した受講者がSection 4のcleanup commandを実行する必要はありません",
+            "guardを最後",
         ):
             self.assertIn(token, readme)
         urls = re.findall(r"https://[^)]+", readme)
@@ -1165,6 +1850,7 @@ class CommonEksContractTests(unittest.TestCase):
                     continue
                 if (
                     path == inventory_path
+                    or "review-evidence" in path.parts
                     or "__pycache__" in path.parts
                 ):
                     continue

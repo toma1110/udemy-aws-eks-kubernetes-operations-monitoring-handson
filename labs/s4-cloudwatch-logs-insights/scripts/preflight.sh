@@ -4,6 +4,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common.sh
 source "$SCRIPT_DIR/common.sh"
 
+record_current_sts_identity
 assert_external_binding
 namespace_output=""
 if namespace_output="$(kubectl get namespace "$NAMESPACE" -o name 2>&1)"; then

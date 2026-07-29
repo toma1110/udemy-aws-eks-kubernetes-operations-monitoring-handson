@@ -57,6 +57,11 @@ test -d scripts
 export S4_DIR="$(pwd)"
 export LEARNER_REPO="$(git -C "$S4_DIR" rev-parse --show-toplevel)"
 export EVIDENCE_DIR="$HOME/eks-monitoring-evidence/s4-cloudwatch-logs"
+export COMMON_EKS_DIR="$(cd "$S4_DIR/../common-eks" && pwd)"
+source "$COMMON_EKS_DIR/scripts/bind-current-identity.sh"
+test -f "$CURRENT_STS_IDENTITY_FILE"
+test "$(realpath "$(dirname -- "$CURRENT_STS_IDENTITY_FILE")")" = \
+  "$(realpath "$PRIVATE_EXECUTION_DIR")"
 
 CLOUDSHELL_PUBLIC_IP="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
 export API_PUBLIC_ACCESS_CIDR="${CLOUDSHELL_PUBLIC_IP}/32"
@@ -67,7 +72,7 @@ printf 'Section directory: %s\nResult directory: %s\nCloudShell CIDR: %s\n' \
   "$S4_DIR" "$EVIDENCE_DIR" "$API_PUBLIC_ACCESS_CIDR"
 ```
 
-`EVIDENCE_DIR`はquery結果などの保存先です。Git repositoryの外に置き、account ID、ARN、credentialは保存しません。
+`EVIDENCE_DIR`はquery結果などの保存先です。Git repositoryの外に置き、account ID、ARN、credentialは保存しません。`bind-current-identity.sh`はcommon EKS preflightが作ったdeterministic pathのsole identityを再発見・再検証して再利用します。環境変数が失われた再接続でもSection 4用の2個目を作成・上書きしません。候補0件ならdeterministic pathへ初回作成し、複数、foreign、malformed、current identity mismatchならfail closedです。内容をterminal、提出物、Issueへ貼り付けず、過去runとのaccount比較には使いません。
 
 **ここまでの成功:** Section directory、result directory、CloudShell CIDRの3行が表示されます。CIDRは現在のCloudShell public IPv4に`/32`を付けた1件だけです。`0.0.0.0/0`は使用しません。
 
@@ -85,7 +90,7 @@ CloudShellへ再接続してIPが変わった場合は、Sectionを実行せず�
 Section 4 preflight passed for exact Region, cluster context, and absent fixed resources.
 ```
 
-この確認では、東京Region、EKS clusterの固定名とARN構造、kubectlの接続先、必要なtagsとoutputsを照合します。また、これから作るNamespaceとlog groupがまだ存在しないことを確認します。条件が1つでも合わない場合、既存resourceを勝手に再利用せず、作成前に停止します。
+この確認では、現在のdefault CloudShell STS identityの有効性、東京Region、EKS clusterの固定名とARN構造、kubectlの接続先、必要なtagsとoutputsを照合します。また、これから作るNamespaceとlog groupがまだ存在しないことを確認します。成功表示にaccount IDは含めません。条件が1つでも合わない場合、既存resourceを勝手に再利用せず、作成前に停止します。
 
 ### 4. EKSでsampleログを6件作る
 
@@ -200,6 +205,15 @@ Cleanup verified: chargeable residuals are absent and the exact guard was remove
 
 cleanup guardは、通常の削除を忘れた場合に備える期限付きの保護です。通常は自分でSection → commonの順に削除し、課金対象の残存確認が終わった後にguardを最後に削除します。
 
+最終成功表示後、post-guard verifierで同じcurrent identityを再検証し、guard削除後の全fixed residualをもう一度確認します。このscriptが成功した場合だけsole identity fileとprivate directoryを削除します。
+
+```bash
+"$COMMON_EKS_DIR/scripts/post-guard-verify.sh"
+unset CURRENT_STS_IDENTITY_FILE PRIVATE_EXECUTION_DIR
+```
+
+途中でabortした場合もidentityを先に削除しません。現在identityを保持したままSection cleanup、common cleanup、残存0、guard-lastまで完了し、最後に`post-guard-verify.sh`を実行します。post-guard repeat zeroが失敗した場合はidentityを保持してfail closedになります。preflight中に作成前abortした場合も、固定resourceが不存在であることをcleanup手順とpost-guard verifierで確認してから破棄します。
+
 必要な結果を手元へdownloadした後、CloudShellの`$HOME` 1 GBを圧迫する不要なcopyは削除できます。
 
 ## コストと安全上の注意
@@ -235,7 +249,7 @@ python3 -B -m unittest discover -s "$S4_DIR/tests" -p 'test_*.py'
 - queryが`Complete`にならない: statusを保存して停止し、時間帯、log group、Region、permissionを確認します。
 - cleanup failure: 表示された残存resourceまたは権限errorを確認します。Section cleanup成功前にcommon cleanupへ進まず、検査をskipしません。
 - ownership label mismatch: 追加labelを無視して削除しません。作成元を確認し、判断なしにlabelを削除・上書きしません。
-- CloudShell再接続: 同じRegionの`$HOME` fileは残りますが、環境変数は再設定が必要です。Region、期限、resource状態を確認し直します。
+- CloudShell再接続: 同じRegionの`$HOME` fileは残ります。Regionを再設定し、commonの`bind-current-identity.sh`をsourceしてsole bindingを再発見・再検証します。新しいprivate directoryは作りません。その後、期限とresource状態を確認し直します。
 
 ## 安全設計の補足
 
