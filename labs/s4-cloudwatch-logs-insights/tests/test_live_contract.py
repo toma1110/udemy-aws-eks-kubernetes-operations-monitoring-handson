@@ -172,7 +172,6 @@ class LiveContractTests(unittest.TestCase):
         for token in (
             "AWS CloudShell",
             "Bash",
-            "local PowerShellは不要",
             "aws --version",
             "kubectl version --client --output=json",
             "ap-northeast-1",
@@ -180,6 +179,7 @@ class LiveContractTests(unittest.TestCase):
             "1 GB",
         ):
             self.assertIn(token, self.readme)
+        self.assertNotIn("local PowerShell" + "は不要です。", self.readme)
 
     def test_current_sts_identity_is_validated_and_written_only_to_private_path(
         self,

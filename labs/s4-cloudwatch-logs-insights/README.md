@@ -2,7 +2,7 @@
 
 このハンズオンでは、EKS上のPodが出したログをCloudWatch Logsへ送り、Logs Insightsで必要な行を探します。対象講義は`s4-l2`「CloudWatch LogsでPodログを探す」と`s4-l3`「Logs Insightsの最初のクエリ」です。
 
-すべてのコマンドは、東京Regionを選択して起動した通常のAWS CloudShellで実行します。AWS CloudShellは、ブラウザから利用できるAWS上のコマンド実行環境です。local PowerShellは不要です。
+すべてのコマンドは、東京Regionを選択して起動した通常のAWS CloudShellで実行します。AWS CloudShellは、ブラウザから利用できるAWS上のコマンド実行環境です。
 
 ## 目的
 
