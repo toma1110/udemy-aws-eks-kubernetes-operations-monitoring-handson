@@ -1,0 +1,25 @@
+{
+  "schema": "c010-s8-expected-results-v1",
+  "course_id": "aws-eks-kubernetes-operations-monitoring-course",
+  "section_id": "s8",
+  "hands_on_lectures": [
+    "s8-l3",
+    "s8-l4"
+  ],
+  "learner_results": [
+    "A complete first-response Runbook separates observed facts, unknowns, hypotheses, next read-only checks, and escalation.",
+    "A cost and cleanup inventory keeps discovery separate from deletion authorization.",
+    "Cleanup order starts with Section resources and Kubernetes load-balancer owners, verifies fixed residuals, and removes the cleanup guard last.",
+    "Common EKS status validation exposes only a generic success line; raw success stdout remains in a private temporary file and is removed."
+  ],
+  "live_execution": {
+    "aws_resource_creation": "not-run",
+    "aws_resource_deletion": "not-run",
+    "reason": "Live AWS use requires the exact CloudShell identity, intended account confirmation, fixed common EKS runtime binding, current pricing estimate, bounded use window, and deletion preflight."
+  },
+  "cleanup": {
+    "section_cloud_resources": "none-created",
+    "local_private_runbook": "remove-after-use",
+    "common_environment": "use-only-the-owned-common-eks-delete-and-post-guard-contract"
+  }
+}

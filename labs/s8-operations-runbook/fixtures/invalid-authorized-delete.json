@@ -1,0 +1,20 @@
+{
+  "schema": "c010-s8-cost-cleanup-inventory-v1",
+  "region": "ap-northeast-1",
+  "observed_at": "2026-07-31T00:00:00Z",
+  "official_pricing_checked_at": "2026-07-31T00:00:00Z",
+  "live_aws_execution": false,
+  "resources": [
+    {
+      "resource_type": "eks-cluster",
+      "resource_name": "unknown-cluster",
+      "ownership": "unknown",
+      "cost_driver": "unknown",
+      "deletion_authorized": true,
+      "decision": "delete"
+    }
+  ],
+  "cleanup_order": [],
+  "residual_checks": [],
+  "unknown_cost_or_ownership_action": "continue"
+}

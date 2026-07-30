@@ -1,0 +1,43 @@
+{
+  "schema": "c010-s8-cost-cleanup-inventory-v1",
+  "region": "ap-northeast-1",
+  "observed_at": "2026-07-31T00:00:00Z",
+  "official_pricing_checked_at": "2026-07-31T00:00:00Z",
+  "live_aws_execution": false,
+  "resources": [
+    {
+      "resource_type": "eks-cluster",
+      "resource_name": "sample-cluster",
+      "ownership": "fixture-only",
+      "cost_driver": "cluster-hours and Kubernetes support tier",
+      "deletion_authorized": false,
+      "decision": "do-not-delete-in-this-lab"
+    },
+    {
+      "resource_type": "cloudwatch-log-group",
+      "resource_name": "/sample/containerinsights",
+      "ownership": "fixture-only",
+      "cost_driver": "ingestion, storage, and query scan",
+      "deletion_authorized": false,
+      "decision": "do-not-delete-in-this-lab"
+    }
+  ],
+  "cleanup_order": [
+    "section-specific-resources",
+    "services-and-ingresses",
+    "managed-nodes-and-fargate",
+    "common-cluster-stack",
+    "fixed-residual-verification",
+    "cleanup-guard-last"
+  ],
+  "residual_checks": [
+    "eks",
+    "ec2",
+    "ebs",
+    "eni",
+    "load-balancers",
+    "cloudwatch",
+    "cloudformation"
+  ],
+  "unknown_cost_or_ownership_action": "stop-and-escalate"
+}
