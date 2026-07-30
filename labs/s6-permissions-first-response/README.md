@@ -2,8 +2,7 @@
 
 このハンズオンでは、コース共通のEKS環境を変更せずに、ServiceAccount、Kubernetes RBAC、EKS access entry、IRSA、EKS Pod Identityの関係を観察します。AWS Management Consoleから東京リージョンのAWS CloudShellを開き、Bashで実行します。
 
-ハンズオンURL:
-https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson/tree/main/labs/s6-permissions-first-response
+[Section 6のハンズオンリソースを開く](https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson/tree/main/labs/s6-permissions-first-response)
 
 ## 学習目標
 
@@ -12,7 +11,7 @@ https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-hands
 3. EKS access entry、IRSA、EKS Pod Identityが結ぶ対象の違いを確認する。
 4. `Forbidden`、`Unauthorized`、`AccessDenied`、監視データ欠落の最初の確認先を選ぶ。
 
-この演習は読み取りだけです。IAM policy、Kubernetes Role、RoleBinding、ClusterRoleBinding、EKS access entry、Pod Identity associationを作成・更新・削除しません。権限が不足している場合も、この演習のために権限を追加せず、表示されたerrorと失敗したcommandを管理者へ共有します。
+この演習は読み取りだけです。IAM policy、Kubernetes Role、RoleBinding、ClusterRoleBinding、EKS access entry、Pod Identity associationを作成・更新・削除しません。
 
 ## 1. CloudShellを開く
 
@@ -65,7 +64,7 @@ chmod +x "$S6_DIR"/scripts/*.sh
 
 ## 3. 共通EKS環境を確認する
 
-このSectionは、Section 5で独立review済みの共通EKS環境を再利用します。環境がまだない場合だけ、`../common-eks/README.md`に従って作成してください。作成にはEKS control plane、managed node、EBS、public IPv4などの料金が発生します。
+このSectionは、Section 5で使用した共通EKS環境を再利用します。環境がまだない場合だけ、[共通EKS環境のREADME](../common-eks/README.md)に従って作成してください。作成にはEKS control plane、managed node、EBS、public IPv4などの料金が発生します。
 
 共通環境の通常の作成・削除contractはそのまま再利用します。共通の`status.sh`は詳細なAWS identityを表示するため、このSectionでは呼びません。次のSection-local statusが同じ固定stack、cluster、kube contextをprivate log内で検証し、terminalにはRegion、cluster状態、Ready Node数だけを表示します。
 
@@ -162,7 +161,7 @@ cp "$S6_DIR/templates/observation-notes.md" \
 
 Section 6はAWS resourceもKubernetes resourceも作成しません。cleanupは2段階です。
 
-Phase 1ではrun固有の観察結果だけを削除し、current identityのprivate bindingを残します。
+最初に、このSectionで保存した観察結果だけを削除します。共通EKS環境の削除が終わるまで、AWSアカウントの確認情報は残してください。
 
 ```bash
 "$S6_DIR/scripts/cleanup-local-evidence.sh"
@@ -174,13 +173,13 @@ Phase 1ではrun固有の観察結果だけを削除し、current identityのpri
 "$COMMON_EKS_DIR/scripts/delete.sh"
 ```
 
-Phase 2は、governed common cleanupを実行後、同じcurrent identityの`Account`、`Arn`、`UserId` bytesと、固定common/guard residualがないことをgoverned verifierで再確認します。このverifierだけがidentity fileを削除します。
+共通EKS環境を削除した後、同じAWSアカウントで削除確認scriptを実行します。このscriptは、EKSと関連リソースが残っていないことを確かめてから、保存していたAWSアカウントの確認情報を削除します。
 
 ```bash
 "$COMMON_EKS_DIR/scripts/post-guard-verify.sh"
 ```
 
-共通削除またはfinalizeが残存resource、identity不一致、権限errorを報告した場合はprivate identityを消さず、共通EKS環境のREADMEに従って解消してください。
+共通EKS環境の削除または削除後の確認で、リソースの残り、AWSアカウントの不一致、権限エラーが表示された場合は、保存されたAWSアカウントの確認情報を手作業で消さず、[共通EKS環境のREADME](../common-eks/README.md)に従って解消してください。
 
 ## 費用
 
@@ -195,7 +194,7 @@ Section 6の観察command自体は新しいresourceを作りません。主な�
 - Pod Identity一覧を読めない: IRSA annotationやRBACの観察結果で代用したと表現せず、未確認として記録します。
 - EKS access entryのlistまたはdescribeだけ拒否される: summaryの`observed` / `complete`を確認し、他の層の結果はそのまま利用します。
 - run directory collision: 古いdirectoryを上書きせず、新しい`S6_RUN_ID`を作って最初から実行します。
-- post-guard verificationが停止する: identity fileを手作業で消さず、共通resource残存またはcurrent identityの不一致を解消します。
+- 削除後の確認が停止する: AWSアカウントの確認情報を手作業で消さず、共通EKS環境のリソースが残っていないか、実行中のAWSアカウントが変わっていないかを確認します。
 - 要約がaccount IDを検出して停止する: raw fileは公開せず、`analyze.py`の要約対象を確認します。
 
 ## 公式資料
