@@ -1,0 +1,30 @@
+{
+  "schema": "udemy4-c010-s7-expected-results-v1",
+  "section": "s7",
+  "hands_on_lectures": ["s7-l2", "s7-l3"],
+  "region": "ap-northeast-1",
+  "cluster": "udemy4-c010-common-20260724",
+  "read_only": true,
+  "diagnostic_layers": [
+    "addon",
+    "agent_pods",
+    "daemonset",
+    "node_taints",
+    "network_signals",
+    "iam_signals",
+    "enhanced_observability",
+    "otel_container_insights_root_flag",
+    "classic_container_insights_root_flag",
+    "legacy_enhanced_container_insights_flag",
+    "approach_specific_configured_mode_signal",
+    "log_groups",
+    "agent_log_observation_status",
+    "region",
+    "agent_configuration"
+  ],
+  "cleanup": {
+    "section_cloud_resources": "none",
+    "section_local_evidence": "exact run directory and then exact empty s7-observations root",
+    "common_order": "section-local-evidence -> common -> guard -> post-guard residual verification"
+  }
+}

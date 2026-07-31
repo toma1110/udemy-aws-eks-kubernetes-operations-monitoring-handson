@@ -1,0 +1,39 @@
+{
+  "schema": "udemy4-c010-s7-normalized-observations-v1",
+  "region": "ap-northeast-1",
+  "cluster": "udemy4-c010-common-20260724",
+  "addon": {
+    "observed": true,
+    "reason": "observed",
+    "status": "ACTIVE",
+    "health_issue_codes": [],
+    "configuration_values_present": true
+  },
+  "agent_pods": {
+    "observed": true,
+    "total": 2,
+    "non_running": 0,
+    "waiting_reasons": []
+  },
+  "daemonset": {"observed": true, "desired": 2, "ready": 2},
+  "node_taints_observed": true,
+  "metrics": {"observed": true, "series_count": 24},
+  "logs": {"observed": true, "group_count": 2},
+  "agent_logs": {"observed": true, "reason": "observed"},
+  "configuration": {
+    "observed": true,
+    "configmap_count": 3,
+    "agent_log_pipeline_config_present": true,
+    "container_logs_override": "enabled",
+    "otel_container_insights_override": "enabled",
+    "classic_container_insights_override": "enabled",
+    "legacy_enhanced_observability_override": "enabled",
+    "effective_log_collection": "explicitly-enabled-by-addon-override"
+  },
+  "agent_signals": {
+    "access_denied": false,
+    "network_error": false,
+    "configuration_error": false
+  },
+  "live_proof": false
+}
