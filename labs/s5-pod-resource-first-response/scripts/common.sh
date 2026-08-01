@@ -23,7 +23,7 @@ assert_exact_s5_namespace() {
       "kubernetes.io/metadata.name": $namespace,
       "udemy4.example/course": "C010",
       "udemy4.example/purpose": "training",
-      "udemy4.example/work-package": "issue-31"
+      "udemy4.example/lab-owner": "s5-pod-resource-lab"
     }
   ' <<<"$object" >/dev/null ||
     die "Section 5 namespace identity or ownership labels do not match."
