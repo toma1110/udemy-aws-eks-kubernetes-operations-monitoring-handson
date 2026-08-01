@@ -1181,7 +1181,7 @@ class CommonEksContractTests(unittest.TestCase):
                 "app.kubernetes.io/part-of": "udemy4-c010",
                 "app.kubernetes.io/managed-by": "udemy4",
                 "udemy4.example/course": "C010",
-                "udemy4.example/work-package": "issue-31",
+            "udemy4.example/lab-owner": "s5-pod-resource-lab",
                 "udemy4.example/purpose": "training",
                 "kubernetes.io/metadata.name": "udemy4-c010-s5-20260724",
             }

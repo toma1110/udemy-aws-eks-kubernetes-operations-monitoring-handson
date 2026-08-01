@@ -3,7 +3,7 @@
 # Excludes: artifact-inventory.sha256 itself and __pycache__/**.
 # Recorded files: 41.
 fd396f30dfce57fd7cbdb592de07178d25c2f7a0ec96ac7dbf7b486dfffd3a8f  labs/common-eks/README.md
-168683ddde26b14057cfa0dfd810e2789beb1a50c540214ffa8ea04f8ef4cfa5  labs/common-eks/cleanup-guard.yaml
+f49d5326b4e564a0c2f3962c4e26616336604b9225cdd0a582b5bb3ed3aebc40  labs/common-eks/cleanup-guard.yaml
 8314f57dd4a5a763c3c5284d640b26f423bab785fef8bd968010fdd08be6fb71  labs/common-eks/fixtures/rollback-complete-stack.json
 35065d40f4fb017d96be980d0d560068bf7d70a639c7cfbcdd84092614838382  labs/common-eks/scripts/bind-current-identity.sh
 77f6a503b2549ced42972381bfafafd5b9b539f24b973fa6579580d28b49522e  labs/common-eks/scripts/common.sh
@@ -15,7 +15,7 @@ c36859570d9fd30581af422c72cbb2fd12a5e29043e3847fd0adc64b0f9475fe  labs/common-ek
 710da06598e2d66c652733999008567b8a59a86126f3e654ed85bd8954317bf1  labs/common-eks/scripts/status.sh
 df09598d3bb03e9c3218df37fdeb1c16c2cff32f13c79fe85415ecad59016efb  labs/common-eks/scripts/verify-cleanup.sh
 aecbf2ade094d746214100617033bb3199413d43a1a314399fe4cfa8d85d7dfd  labs/common-eks/template.yaml
-afe9183efff906fc12b5958f06c9be06dcf1f87209c7f8226c5a4df9c4d8830e  labs/common-eks/tests/test_common_eks.py
+cfae4b21ab031b3acd601525e79c3d47d324201ef0763e304fe78491bb9280a1  labs/common-eks/tests/test_common_eks.py
 4efc0784099befc220cb89f50dbcb1f59f2087d3773364f25d049e11cace4adb  labs/s5-pod-resource-first-response/README.md
 d13db5cd51345be0eb1434cdc5fdcb33906af74dc34b3f33d80c9a5973fafbb0  labs/s5-pod-resource-first-response/analyze.py
 73108918fc262109d487d0c02b57cc886d714002a2e7a08ab893191934e87e76  labs/s5-pod-resource-first-response/expected-results.json
@@ -33,13 +33,13 @@ d34c7b1f94806d2d91bbf67cd32a5397b044ff2cd13b21ced196122ce74cad22  labs/s5-pod-re
 14d8d089895a7b4937997cfbf8be289369df6aef3dd2b41671d92d4ae3317869  labs/s5-pod-resource-first-response/fixtures/logs-crashloop-probe-previous.txt
 3c4436aba6547108515fe14acd86cbbee1638caf25af17b3e0009c7fffe05a4e  labs/s5-pod-resource-first-response/fixtures/manifest.json
 4af4f0134bf4aba806cf809b32a6b0475b9ddee370ee0f0bde27b9d586dff247  labs/s5-pod-resource-first-response/lab_validate.py
-a4bb9eb617c6b8504278fe1032f65b8203a9b3908dbadd31f60b7157fc208b04  labs/s5-pod-resource-first-response/manifests/00-namespace.yaml
+b33e4c5014b9cb551577a03387dea859622ee0bbb899580dc776620b681c303a  labs/s5-pod-resource-first-response/manifests/00-namespace.yaml
 ed50f27d9623841774226fb1fddff53bb6ec76afd010523d91f1519d3fd662b7  labs/s5-pod-resource-first-response/manifests/10-pending-capacity.yaml
 20108eebe65dcec670ad59810fb90491a1534e63a7f3b0e986fada86a327ec4f  labs/s5-pod-resource-first-response/manifests/20-crashloop-app.yaml
 a463e39a7233129eacbb9849e191bd1a7a0d6aec5ca98d12c121f386eccbe520  labs/s5-pod-resource-first-response/manifests/30-crashloop-memory.yaml
 1ccf26591f92d51b3c769ff88a9d55c1cbc2e88819c9d8d7b1c4d307c25fc9a1  labs/s5-pod-resource-first-response/scripts/apply-scenarios.sh
 0a7f2369d0fad8548d1bddcff7e9e194a175c5bcc01a80d3143d7a82414ef3ba  labs/s5-pod-resource-first-response/scripts/capture-evidence.sh
 60726bafc82eb36302cadb36057af7e3533f78a0241b21a6a0da885f7d84aefa  labs/s5-pod-resource-first-response/scripts/cleanup-section.sh
-e6683708824b55838bb2125d1eb27d02e2fdbc5675dd7f36a30daedb02fd0868  labs/s5-pod-resource-first-response/scripts/common.sh
+621d23086ab4f8b3bf826307bb88900072e80722526b0890370a9c9c83e4bf3b  labs/s5-pod-resource-first-response/scripts/common.sh
 8702679a9448e673528910ce761d6ae89fa2057f8ba98fb0d2ffc0b2a6a45d8b  labs/s5-pod-resource-first-response/tests/test_analyze.py
-02f99e7f103cb24327ef28c50d157bbce2039419fdbc98b823cc143155f85923  labs/s5-pod-resource-first-response/tests/test_lab_contract.py
+1213b4522f568b863bf8a7dd0a1cb121018e4c0b23b7814da8b5e4b59d85e901  labs/s5-pod-resource-first-response/tests/test_lab_contract.py
