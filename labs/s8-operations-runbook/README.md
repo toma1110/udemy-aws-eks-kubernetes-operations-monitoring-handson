@@ -149,7 +149,7 @@ python3 "$S8_DIR/validate_operations_pack.py" runbook \
   "$S8_PRIVATE_DIR/first-response-runbook.md"
 ```
 
-validatorのpassはRunbookの必須項目が埋まったことを示します。原因が正しいことや、障害が解消したことまでは証明しません。
+確認用スクリプトの成功は、Runbookの必須項目が埋まったことを示します。原因が正しいことや、障害が解消したことまでは証明しません。
 
 ## 6. コストとcleanup inventoryを確認する
 

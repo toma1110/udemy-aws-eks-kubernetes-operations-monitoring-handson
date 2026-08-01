@@ -2,7 +2,7 @@
 # Sort key: UTF-8 repository-relative path bytes, ordinal ascending. Format: lowercase SHA-256, two spaces, path, LF.
 # Excludes: artifact-inventory.sha256 itself and __pycache__/**.
 # Recorded files: 41.
-fd396f30dfce57fd7cbdb592de07178d25c2f7a0ec96ac7dbf7b486dfffd3a8f  labs/common-eks/README.md
+499586eae4b6e873fbee4f6c19e509d889c81d526f48ab21993345bbbb3e0353  labs/common-eks/README.md
 f49d5326b4e564a0c2f3962c4e26616336604b9225cdd0a582b5bb3ed3aebc40  labs/common-eks/cleanup-guard.yaml
 8314f57dd4a5a763c3c5284d640b26f423bab785fef8bd968010fdd08be6fb71  labs/common-eks/fixtures/rollback-complete-stack.json
 35065d40f4fb017d96be980d0d560068bf7d70a639c7cfbcdd84092614838382  labs/common-eks/scripts/bind-current-identity.sh

@@ -71,7 +71,7 @@ CloudWatch Observability add-on がないことも有効な診断結果です。
 
 ## 4. private 観察領域を準備する
 
-run ID を作り、共通環境と同じ現在の STS identity へ結合した Git 外の領域を準備します。
+今回の実行を区別する名前を作り、共通環境と同じ現在のSTS identityを使うGit管理外の領域を準備します。
 
 ```bash
 export S7_RUN_ID="$(date -u '+%Y%m%dT%H%M%SZ')-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"

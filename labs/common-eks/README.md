@@ -60,19 +60,22 @@ export AVAILABILITY_ZONE_B="ap-northeast-1c"
 export CLEANUP_DEADLINE_UTC="$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%M:%SZ')"
 ```
 
-`API_PUBLIC_ACCESS_CIDR`へ`0.0.0.0/0`は指定できません。templateは`EndpointPrivateAccess: true`と`EndpointPublicAccess: true`を併用し、public accessは上記exact CIDRへ限定します。これはrestricted public endpointだけでmanaged nodeがAPI serverへ到達できず`NodeCreationFailure`になった再発を防ぐためです。
+`API_PUBLIC_ACCESS_CIDR`へ`0.0.0.0/0`は指定できません。private endpointを有効にし、public endpointはCloudShellの`/32`だけに限定します。これにより、nodeからAPI serverへ到達できる経路を残しながら、public accessを広げません。
 
-`bind-current-identity.sh`はCourse/Section固定のGit外path `$HOME/eks-monitoring-private/c010-s4/current-run/current-sts-identity.json`を使います。初回の候補0件ではmode 700のtemporary sibling内でSTS取得・検証・writeを完了し、collisionを再確認してからno-clobber renameで`current-run`へinstallします。途中失敗ではtemporaryと空parentを回収するため、空の`current-run`を残しません。CloudShell再接続で環境変数が失われてもexact 1件を発見してcurrent STS identityを再検証し、同じfileを再利用します。候補が複数、foreign path、malformed、unexpected artifact、current identity mismatch、またはinstall中のcollisionなら新規作成・選択・上書きをせずfail closedです。内容をterminal、提出物、Issueへ貼り付けず、過去runとのaccount比較には使いません。
+`bind-current-identity.sh`は、現在のAWS identityをGit管理外のprivate file `$HOME/eks-monitoring-private/c010-s4/current-run/current-sts-identity.json`へ保存します。CloudShellへ再接続した場合は同じfileを再検証して使います。
+
+- identity fileの内容をterminal、提出物、Issueへ貼り付けないでください。
+- 候補が複数ある、fileが壊れている、現在のidentityと一致しない場合は処理が停止します。新しいfileを手作業で選んだり上書きしたりしないでください。
 
 ## 手順
 
-### 1. fail-closed preflight
+### 1. 作成前の安全確認
 
 ```bash
 "$COMMON_EKS_DIR/scripts/preflight.sh"
 ```
 
-現在のdefault CloudShell STS identityが有効であること、Region、AWS CLI/kubectl version、2 AZ、`t3.medium` offering、EKS quota、template、固定stack不存在、deadlineを確認します。成功表示にaccount IDは含めません。
+現在のCloudShell identity、Region、AWS CLIとkubectlのversion、2つのAvailability Zone、`t3.medium`、EKS quota、template、同名stackの不存在、cleanup期限を確認します。成功表示にaccount IDは含めません。
 
 ### 2. cleanup guardとcommon EKSを作る
 
@@ -80,11 +83,17 @@ export CLEANUP_DEADLINE_UTC="$(date -u -d '+4 hours' '+%Y-%m-%dT%H:%M:%SZ')"
 "$COMMON_EKS_DIR/scripts/create.sh"
 ```
 
-guard stackを先に作り、exact bindingを確認してからcommon stackをatomicな`cloudformation create-stack`で一度だけ作り、`stack-create-complete`を待ちます。固定名stackが既に存在する場合は`AlreadyExists`で停止し、`deploy`、update、adoptを行いません。common stackの`update-stack`を使えるのは、下記のownership-bound CIDR recoveryだけです。common作成が途中で失敗してもguardは残ります。
+cleanup guardを先に作り、その後common EKS stackを1回だけ作成して完了を待ちます。同名stackがある場合は`AlreadyExists`で停止し、既存stackを変更または流用しません。例外は、後述するCloudShell public IP変更時のCIDR更新だけです。作成が途中で失敗してもcleanup guardは残ります。
 
-guardのSchedulerはcommon stackの直接`DeleteStack`を呼びません。deadlineでexact Step Functions workflowだけを開始し、common stackがまだ`CREATE_IN_PROGRESS`なら固定Region・name・ownership・parametersを検証したまま有限の6時間timeout内で30秒ごとにsupported terminal stateを待ちます。その後workflowはcommon stackとEKSを照合してcleanup Lambdaを一時的にcommon VPCの2 subnetへattachします。LambdaのEKS access entryはcluster-admin policyを持たず、Kubernetes group `udemy4:c010:s4-cleanup`だけへ結合します。
+期限に達するとSchedulerがStep Functionsのcleanup workflowを開始します。stack作成中なら最大6時間待ち、完了後に対象stackとEKS clusterを確認してからcleanup Lambdaを一時的にVPCへ接続します。Lambdaにはcluster-adminを与えず、cleanup専用のKubernetes groupだけを使います。
 
-RBACの適用境界は2つです。common `scripts/create.sh`はstack出力のcluster-scoped manifestだけを適用し、s4 namespace `udemy4-s4-logs`とs5 namespace `udemy4-c010-s5-20260724`それぞれに限定した`get/delete`のClusterRole/ClusterRoleBindingを再読込検証します。s4 workload flowはs4 namespaceを作成した後、Job作成前に別の完全manifestを適用し、namespaced Job `s4-log-generator`だけに限定したRole/RoleBindingを再読込検証します。common createはs4 namespaceやnamespaced Job RBACを先に作りません。scheduled cleanupはs4 namespaceが存在するときだけJobを確認・削除し、続いてs4 namespace、s5 namespace、exact log group、common stack、EC2/EBS/ENI/EKS log residualを順に確認してguardを最後に削除します。Lambdaは専用security groupとcontrol-plane ingressを使いprivate EKS endpointへ到達します。作成後は`aws eks update-kubeconfig`、exact context、1 Ready nodeを確認します。
+cleanup権限はSection 4とSection 5のnamespaceだけに限定します。Section 4のJob削除権限も`udemy4-s4-logs`内の`udemy4-s4-log-generator`だけが対象です。
+
+作成後は次を確認します。
+
+- `aws eks update-kubeconfig`が成功する
+- 接続先がこの演習のclusterである
+- nodeが1台`Ready`になっている
 
 ### 3. statusを確認する
 
@@ -110,9 +119,9 @@ CloudShellへ再接続してpublic IPv4が変わると、旧`/32`に限定され
 "$COMMON_EKS_DIR/scripts/recover-cidr.sh"
 ```
 
-このscriptは、先にexact guard stack、common stack ID/Region/name/tag、9個の固定parameter、EKS ARNのRegion/nameとtag、旧stack outputとruntimeの唯一の非world `/32`、private/public endpointを照合します。その後、現在のCloudShell IPv4を取得し、CloudFormationの`ApiPublicAccessCidr`だけを新しいexact `/32`へ更新します。他parameterは`UsePreviousValue=true`で保持し、`0.0.0.0/0`、複数CIDR、未知parameter、ownership不一致、unstable stackはfail closedです。update完了後にstack output、runtime endpoint、kubectl contextを再照合します。
+このscriptは対象stackとEKS clusterのRegion、名前、tag、parameterを確認し、`ApiPublicAccessCidr`だけを現在のCloudShell IPv4の`/32`へ更新します。ほかのparameterは変更しません。`0.0.0.0/0`、複数CIDR、所有者が一致しないstack、不安定なstackは拒否されます。更新後にendpointとkubectlの接続先を再確認します。
 
-deadline workflowはCloudShellのIPに依存しません。cleanup時だけLambdaをcommon VPCへattachし、AccessEntry groupとexact RBACでprivate endpointへ到達するため、session切断後もSection cleanup gateを省略しません。KubernetesがNamespaceへ自動付与する`kubernetes.io/metadata.name=udemy4-s4-logs`は必須system labelとして許可し、3個のownership label以外の追加user labelは拒否します。
+期限によるcleanupはCloudShellのIPに依存しません。cleanup Lambdaはprivate endpointを使うため、CloudShell sessionが切れてもSectionのresourceを確認してから削除します。
 
 ## Cleanup
 
@@ -122,34 +131,36 @@ Section 4のREADMEに従ってSection namespaceとlog groupを先に削除しま
 "$COMMON_EKS_DIR/scripts/delete.sh"
 ```
 
-削除scriptはexact stackのRegion/name/tagを再照合し、次をfail closedで確認します。
+削除scriptは対象stackのRegion、名前、tagを確認し、次のresourceが残っていないことを確認します。
 
 1. common CloudFormation stackなし
 2. EKS clusterなし
 3. exact tagのEC2 instance、EBS volume、ENIなし
 4. EKS descriptionのENIなし
 5. `/aws/eks/udemy4-c010-common-20260724/` log groupなし
-6. すべてpassした後だけguard stack、Scheduler schedule、Step Functions、cleanup Lambda/roleを削除
+6. すべて確認できた後だけguard stack、Scheduler、Step Functions、cleanup Lambdaとroleを削除
 
-`create-stack`が失敗してcommon stackが`ROLLBACK_COMPLETE`、かつexact EKS clusterが不存在の場合だけ、failed-create recoveryへ分岐します。この分岐は`ap-northeast-1`、固定stack name/ARN構造、exact 5 tags、固定9 parameterのkey/valueと唯一の非world CIDR、exact `ROLLBACK_COMPLETE`を照合します。削除済みresource由来のoutputs、current CIDR、kubectl、Kubernetes contextは要求しません。`UPDATE_ROLLBACK_COMPLETE`など他status、tag/parameter/ARN drift、または同名EKS clusterが存在する場合は削除せず停止します。failed stackを削除した後もEC2/EBS/ENI/CloudWatch/EKS residual queryをすべて実行し、guardを最後に削除します。
+作成に失敗したstackは、状態が`ROLLBACK_COMPLETE`で同名EKS clusterが存在しない場合だけ削除できます。ほかの状態、tagやparameterの不一致、同名clusterの存在を検出した場合は削除せず停止します。失敗したstackを削除した後も、EC2、EBS、ENI、CloudWatch Logs、EKSの残存を確認し、cleanup guardは最後に削除します。
 
-`scripts/delete.sh`のmanual cleanup gateは、s4 exact namespace `udemy4-s4-logs`の不存在（namespace不在後はnamespaced Job endpointを照会しません）、s4 log group `/udemy4/c010/s4/20260725`の不存在、s5 exact namespace `udemy4-c010-s5-20260724`の不存在を確認してからcommon stackを削除し、同じprocess内で`scripts/verify-cleanup.sh`を実行します。scheduled cleanupも同じs4+s5境界を要求しますが、s4 namespaceが存在する間だけexact Job `s4-log-generator`を検査・削除します。`scripts/verify-cleanup.sh`だけの単独実行はSection residual gateを引き継げないためfail closedで停止します。common残存があればguardを削除せず、AWS CLIのpermission、credential、network errorを「不存在」として扱いません。
+`scripts/delete.sh`は、Section 4のnamespaceとlog group、Section 5のnamespaceが削除済みであることを確認してからcommon stackを削除します。続けて`scripts/verify-cleanup.sh`を自動実行します。この確認scriptだけを単独実行しないでください。
 
-上記の成功表示後、post-guard verifierで同じcurrent identityを再検証し、guard削除後の全fixed residualをもう一度確認します。このscriptが成功した場合だけsole identity fileとprivate directoryを削除します。
+resourceが残っている場合や、AWS CLIの権限、credential、networkに問題がある場合はcleanup guardを削除しません。エラーを「resourceなし」と読み替えず、表示された原因を解消してください。
+
+上記の成功表示後、同じidentityでresourceが残っていないことをもう一度確認します。この確認に成功した場合だけprivate identity fileを削除します。
 
 ```bash
 "$COMMON_EKS_DIR/scripts/post-guard-verify.sh"
 unset CURRENT_STS_IDENTITY_FILE PRIVATE_EXECUTION_DIR
 ```
 
-途中でabortした場合もidentityを先に削除しません。現在identityを保持したままSection cleanup、common cleanup、残存0、guard-lastまで完了し、最後に`post-guard-verify.sh`を実行します。post-guard repeat zeroが失敗した場合はidentityを保持してfail closedになります。preflight中に作成前abortした場合も、固定resourceが不存在であることをcleanup手順とpost-guard verifierで確認してから破棄します。
+途中で停止した場合もidentity fileを先に削除しません。Section、common EKS、cleanup guardの順に片付け、最後に`post-guard-verify.sh`を実行します。確認に失敗した場合はidentity fileを残し、表示されたresourceまたは接続エラーを調査します。
 
 ## Troubleshooting
 
 - `AWS_REGION ... ap-northeast-1`: ConsoleとCloudShell tabを東京へ切り替え、環境変数を再設定します。
 - `kubectl context`: `aws eks update-kubeconfig --region ap-northeast-1 --name udemy4-c010-common-20260724`を実行し、exact ARNを確認します。
-- `NodeCreationFailure`: Sectionへ進まず、guardを保持したままCloudFormationがexact `ROLLBACK_COMPLETE`になるまで待ち、`delete.sh`を実行します。clusterが不存在ならfailed-create recoveryがoutputs/kubectlなしでexact stackを削除し、残存確認後にguardを最後に削除します。他statusまたは同名clusterが残る場合はfail closedです。
-- `Cleanup verification failed closed`: 表示されたexact残存だけを調査し、検査を削除・skipしません。
+- `NodeCreationFailure`: Sectionへ進まず、cleanup guardを残したままCloudFormationが`ROLLBACK_COMPLETE`になるまで待ち、`delete.sh`を実行します。同名clusterが残る場合は自動削除せず停止します。
+- cleanup確認の失敗: 表示された残存resourceまたは接続エラーを調査し、確認手順を省略しないでください。
 - fixed common stack `AlreadyExists`: scriptは既存stackをupdate/adoptしません。exact statusとownershipを確認し、作り直す場合はSection→common cleanupを完了してから新しいdeadlineでpreflightへ戻ります。CIDR driftだけは`scripts/recover-cidr.sh`を使います。
 - CloudShell session切断: `$HOME`内のpackageとsole identityは同じRegionの次sessionでも残ります。Regionを再設定し、common directoryで`source scripts/bind-current-identity.sh`を実行してexact 1件を再発見・再検証します。新しいtimestamp directoryは作りません。その後`scripts/recover-cidr.sh`で現在IPへのexact recoveryを行い、deadlineと現存resourceを再確認します。deadline到達済みならguard workflowとresource状態を確認し、並行して手動cleanupを開始しません。
 
