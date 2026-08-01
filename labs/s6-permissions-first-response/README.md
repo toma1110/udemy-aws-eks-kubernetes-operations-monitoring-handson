@@ -22,13 +22,14 @@ export AWS_REGION="ap-northeast-1"
 export AWS_DEFAULT_REGION="ap-northeast-1"
 aws --version
 kubectl version --client --output=json
+jq --version
 printf 'HOME=%s\n' "$HOME"
 df -h "$HOME"
 ```
 
 期待結果:
 
-- AWS CLIとkubectlのversionが表示される。
+- AWS CLI、kubectl、jqのversionが表示される。AWS CloudShellにはkubectlとjqがあらかじめ用意されていますが、versionは更新されるため、演習のたびに確認します。
 - CloudShellの`$HOME`に空き容量がある。永続領域はRegionごとに1 GBです。
 
 AWS Management Console上のaccount表示が利用予定と異なる場合は停止してください。STS identityは後の準備scriptがprivate fileへ保存し、accountやARNをterminalへ表示しません。
@@ -199,6 +200,8 @@ Section 6の観察command自体は新しいresourceを作りません。主な�
 
 ## 公式資料
 
+- [AWS CloudShellの環境とプリインストール済みソフトウェア](https://docs.aws.amazon.com/cloudshell/latest/userguide/vm-specs.html)
+- [AWS CloudShellのRegionと保存領域](https://docs.aws.amazon.com/cloudshell/latest/userguide/working-with-aws-cloudshell.html)
 - [EKS access entries](https://docs.aws.amazon.com/eks/latest/userguide/access-entries.html)
 - [IAM roles for service accounts](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html)
 - [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html)

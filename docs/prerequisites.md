@@ -1,44 +1,56 @@
 # 事前準備
 
-## 必要なツール
+このコースのAWS演習は、AWS Management Consoleから開くAWS CloudShellのBashを使います。ローカルPCのPowerShellは必要ありません。
 
-- PowerShell
-- AWS CLI v2
-- `kubectl`
-- AWS Management Consoleへログインできるブラウザ
+## 1. 東京リージョンでCloudShellを開く
 
-任意:
+AWS Management Consoleで東京リージョン `ap-northeast-1` を選び、CloudShellを開きます。promptが表示されたら、次のcommandでBashとRegionを確認します。
 
-- `eksctl`
-- Docker Desktop
-- ローカルKubernetes環境
-
-## AWS側の前提
-
-EKSクラスターを新しく作る場合は、AWS公式ドキュメントで次の前提を確認します。
-
-- EKS要件を満たすVPCと2つ以上のサブネット
-- EKSクラスター用IAMロール
-- クラスター作成、参照、kubeconfig更新に必要な権限
-- Container Insightsを使う場合は、EKS Pod IdentityまたはIRSA、CloudWatchへ送信するIAM権限
-- CloudWatchエンドポイントへHTTPSで到達できるネットワーク
-
-## PC側の確認
-
-```powershell
-.\scripts\verify_prereqs.ps1
+```bash
+bash --version
+export AWS_REGION="ap-northeast-1"
+export AWS_DEFAULT_REGION="ap-northeast-1"
+aws configure list
 ```
 
-このスクリプトはツールの有無、AWS CLIのリージョン、EKSクラスター一覧の取得可否を確認します。`kubectl`の現在のcontextに前後が数字でない12桁の数字列が含まれる場合、その数字列を`[REDACTED_AWS_ACCOUNT_ID]`に置き換えて表示します。認証情報の値を表示する処理はありません。
+`aws configure list`のRegionが`ap-northeast-1`でない場合は、後続の演習へ進みません。
 
-`collect_readonly_evidence.ps1`も、保存する`kubectl_context`へ同じ置換を適用します。この置換の対象は`kubectl`のcontextだけです。クラスター名やロググループ名など、ほかのAWS出力にIDが含まれないことを保証するものではないため、生成した`artifacts/readonly_evidence.json`は共有前に確認してください。
+## 2. ツールと保存領域を確認する
 
-## クラスターがない場合
+AWS公式ドキュメントでは、CloudShellにAWS CLI、kubectl、jqがあらかじめ用意されています。具体的なversionは固定されていないため、演習のたびに現在のversionを確認します。
 
-一般の演習や既存resource向けscriptは、EKSクラスターを自動作成しません。新規作成する場合は、[Amazon EKS クラスターの作成](https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html)を確認し、作成するVPC、サブネット、IAMロール、ノード、実行時間、削除方法を先に決めてください。
+```bash
+aws --version
+kubectl version --client --output=json
+jq --version
+python3 --version
+printf 'HOME=%s\n' "$HOME"
+df -h "$HOME"
+```
 
-限定された共通EKS routeとして、Section 4とSection 5はAWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBashを既定環境とし、[共通EKS基盤](../labs/common-eks/README.md)の`scripts/create.sh`で固定名の短命な学習用stackとEKSクラスターを作成します。AWS CLI `2.12.3`以上、cluster versionと同じか前後1 minor以内の`kubectl`、`jq`、Python 3、事前認証済みconsole identity、Region別`$HOME`の空き容量を確認します。scriptはREADMEに記載したexact account、Region、CIDR、期限、固定名を検証し、既存stackの更新や引き継ぎを行いません。Section 4またはSection 5のREADMEに沿う共通基盤以外で、既存クラスターや任意resourceを作成するgeneral-purpose scriptとして使用しないでください。
+期待結果:
 
-## Container Insightsの前提
+- AWS CLI、kubectl、jq、Python 3のversionが表示される。
+- `$HOME`の使用量と空き容量が表示される。
+- 通常のCloudShellでは、`$HOME`にRegionごとに1 GBの永続領域がある。
 
-OTel Container Insightsを有効にするには、既存のEKSクラスター、AWS CLI、`kubectl`接続、EKS Pod IdentityまたはIRSA、CloudWatchへ送信する権限が必要です。設定後、メトリクスやログがCloudWatchに出るまで数分かかります。
+CloudShell VPC環境には永続領域がありません。この演習では通常のCloudShellを使います。version確認が失敗した場合は、installを始めず、CloudShellを開き直して同じcommandを再確認してください。それでも見つからない場合は、環境が通常のCloudShellかを管理者へ確認します。
+
+## 3. EKS環境を確認する
+
+Section 4以降のEKS演習では、コース共通の短時間EKS環境を使います。環境がない場合だけ、[共通EKS環境のREADME](../labs/common-eks/README.md)に従って作成します。
+
+共通環境を作成する前に、次を確認します。
+
+- AWS Management Consoleで表示される利用予定のaccountとRegionが正しい。
+- EKS、CloudFormation、EC2、EBS、IAM、CloudWatchを扱うために必要な権限がある。
+- EKS control plane、managed node、EBS、public IPv4、CloudWatchの料金をAWS公式ページで確認した。
+- 最大6時間以内に演習を終え、共通READMEの手順で削除と残存確認を行える。
+
+Section 6では、既存の共通EKS環境を読み取り専用で観察します。ServiceAccount、RBAC、IAM policy、EKS access entry、Pod Identity associationを演習のために追加または変更しません。
+
+## 公式資料
+
+- [AWS CloudShellの環境とプリインストール済みソフトウェア](https://docs.aws.amazon.com/cloudshell/latest/userguide/vm-specs.html)
+- [AWS CloudShellのRegionと保存領域](https://docs.aws.amazon.com/cloudshell/latest/userguide/working-with-aws-cloudshell.html)
+- [AWS CloudShellの制限と永続領域](https://docs.aws.amazon.com/cloudshell/latest/userguide/limits.html)

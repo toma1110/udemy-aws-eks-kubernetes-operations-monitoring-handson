@@ -22,8 +22,7 @@ assert_s6_inputs() {
   assert_dns_label "${TARGET_SERVICE_ACCOUNT:-}" "TARGET_SERVICE_ACCOUNT"
   [[ -n "${PRIVATE_EXECUTION_DIR:-}" && -n "${CURRENT_STS_IDENTITY_FILE:-}" ]] ||
     die "Source the governed common bind-current-identity.sh first."
-  [[ "$(realpath -m "$CURRENT_STS_IDENTITY_FILE")" ==
-    "$(realpath -m "$PRIVATE_EXECUTION_DIR/current-sts-identity.json")" ]] ||
+  [[ "$(realpath -m "$CURRENT_STS_IDENTITY_FILE")" == "$(realpath -m "$PRIVATE_EXECUTION_DIR/current-sts-identity.json")" ]] ||
     die "The governed common identity binding shape is invalid."
   [[ "${S6_RUN_ID:-}" =~ ^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}$ ]] ||
     die "S6_RUN_ID must be a run-specific UTC timestamp and random suffix."
