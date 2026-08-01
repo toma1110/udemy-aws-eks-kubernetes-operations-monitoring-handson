@@ -142,7 +142,7 @@ def build_summary(document: dict) -> dict:
         classic_effective == "explicitly-disabled"
         and otel_effective in {"explicitly-disabled", "disabled-by-default"}
     ):
-        configured_mode_signal = "both-root-pipelines-disabled"
+        configured_mode_signal = "both-top-level-settings-disabled"
     elif "not-observed" in {otel_effective, classic_effective, legacy_effective}:
         configured_mode_signal = "not-observed"
     else:
@@ -239,9 +239,9 @@ def build_summary(document: dict) -> dict:
             ),
             "effective_log_collection": expected_effective_log_collection,
             "approach_interpretation": {
-                "otel": otel_effective,
-                "classic_root": classic_effective,
-                "legacy_nested": legacy_effective,
+                "otel_top_level_setting": otel_effective,
+                "classic_top_level_setting": classic_effective,
+                "old_compatibility_setting": legacy_effective,
                 "configured_mode_signal": configured_mode_signal,
             },
         },

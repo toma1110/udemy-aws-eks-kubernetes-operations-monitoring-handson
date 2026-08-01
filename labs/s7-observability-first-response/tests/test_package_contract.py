@@ -12,6 +12,61 @@ import analyze
 
 
 class PackageContractTests(unittest.TestCase):
+    def test_top_resource_link_and_plain_learner_vocabulary_are_preserved(self):
+        text = (PACKAGE / "README.md").read_text(encoding="utf-8")
+        resource_url = (
+            "https://github.com/toma1110/"
+            "udemy-aws-eks-kubernetes-operations-monitoring-handson/"
+            "tree/main/labs/s7-observability-first-response"
+        )
+        resource_link = f"[Section 7 のハンズオンリソースを開く]({resource_url})"
+        self.assertIn(resource_link, text[:1200])
+        self.assertLess(text.index(resource_link), text.index("## 学習目標"))
+        for required in (
+            "Git 管理外の非公開ファイル",
+            "機密情報を除いた要約",
+            "トップレベルの `otelContainerInsights.enabled` 設定",
+            "トップレベルのClassic設定 `containerInsights.enabled`",
+            "旧来の階層にある `agent.config.logs.metrics_collected.kubernetes.enhanced_container_insights` 設定",
+        ):
+            self.assertIn(required, text)
+        learner_files = [
+            PACKAGE / "README.md",
+            PACKAGE / "analyze.py",
+            PACKAGE / "expected-results.json",
+            *sorted((PACKAGE / "fixtures").glob("*.json")),
+            *sorted((PACKAGE / "scripts").glob("*.sh")),
+        ]
+        lowered = "\n".join(
+            path.read_text(encoding="utf-8") for path in learner_files
+        ).casefold()
+        for banned in (
+            "private " + "raw",
+            "red" + "acted",
+            "exact " + "private",
+            "run-" + "private",
+            "private " + "error",
+            "root " + "flag",
+            "private section 7",
+            "private preflight",
+            "private capture",
+            "private run directory",
+            "raw directory contains stale capture files",
+            "exact governed private path",
+            "governed private root",
+            "run directory already exists",
+            "evidence root is unsafe",
+            "preflight passed",
+            "evidence root contains a foreign run",
+            "governed common identity must remain",
+            "local evidence cleanup failed",
+            "must be sourced",
+            "enhanece",
+            "observerbility",
+            "reducted",
+        ):
+            self.assertNotIn(banned.casefold(), lowered)
+
     def test_learner_readme_is_cloudshell_first_and_complete(self):
         text = (PACKAGE / "README.md").read_text(encoding="utf-8")
         for token in (
@@ -160,6 +215,42 @@ cmp -s "$CURRENT_STS_IDENTITY_FILE" "$PRIVATE_TEST_DIR/before.json"
             result.returncode, 0, result.stderr.decode("utf-8", errors="replace")
         )
 
+    def test_transitive_identity_binding_failure_is_private_and_japanese(self):
+        command = r'''
+set -euo pipefail
+TEST_HOME="$(mktemp -d)"
+trap 'rm -rf -- "$TEST_HOME"' EXIT
+export HOME="$TEST_HOME"
+export S7_RUN_ID="20260801T103000Z-a1b2c3d4"
+mkdir -p "$HOME/eks-monitoring-private/c010-s4/first" "$HOME/eks-monitoring-private/c010-s4/second"
+: >"$HOME/eks-monitoring-private/c010-s4/first/current-sts-identity.json"
+: >"$HOME/eks-monitoring-private/c010-s4/second/current-sts-identity.json"
+if source "scripts/prepare-private-run.sh" >"$TEST_HOME/terminal-out.txt" 2>"$TEST_HOME/terminal-error.txt"; then
+  STATUS=0
+else
+  STATUS=$?
+fi
+[[ "$STATUS" -ne 0 ]]
+TERMINAL_ERROR="$(cat "$TEST_HOME/terminal-error.txt")"
+[[ "$TERMINAL_ERROR" == エラー:*Git管理外の非公開ログ*重複* ]]
+[[ "$TERMINAL_ERROR" != *"ERROR:"* ]]
+[[ "$TERMINAL_ERROR" != *"Multiple retained"* ]]
+[[ ! -s "$TEST_HOME/terminal-out.txt" ]]
+mapfile -t PRIVATE_LOGS < <(find "$HOME" -maxdepth 1 -type f -name '.s7-identity-binding-private.*.log')
+[[ "${#PRIVATE_LOGS[@]}" == "1" ]]
+grep -q "Multiple retained current-run identity candidates" "${PRIVATE_LOGS[0]}"
+'''
+        result = subprocess.run(
+            ["bash"],
+            cwd=PACKAGE,
+            input=command.replace("\r", "").encode("utf-8"),
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(
+            result.returncode, 0, result.stderr.decode("utf-8", errors="replace")
+        )
+
     def test_cleanup_removes_empty_root_and_allows_retained_rebinding(self):
         command = r'''
 set -euo pipefail
@@ -285,11 +376,11 @@ source "labs/common-eks/scripts/bind-current-identity.sh"
             summary["configuration"]["container_logs_override"], "enabled"
         )
         self.assertEqual(
-            summary["configuration"]["approach_interpretation"]["otel"],
+            summary["configuration"]["approach_interpretation"]["otel_top_level_setting"],
             "explicitly-disabled",
         )
         self.assertEqual(
-            summary["configuration"]["approach_interpretation"]["classic_root"],
+            summary["configuration"]["approach_interpretation"]["classic_top_level_setting"],
             "explicitly-enabled",
         )
         self.assertEqual(
@@ -350,11 +441,11 @@ source "labs/common-eks/scripts/bind-current-identity.sh"
             summary["configuration"]["effective_log_collection"], "not-determined"
         )
         self.assertEqual(
-            summary["configuration"]["approach_interpretation"]["otel"],
+            summary["configuration"]["approach_interpretation"]["otel_top_level_setting"],
             "disabled-by-default",
         )
         self.assertEqual(
-            summary["configuration"]["approach_interpretation"]["classic_root"],
+            summary["configuration"]["approach_interpretation"]["classic_top_level_setting"],
             "default-dependent",
         )
         self.assertEqual(
@@ -367,11 +458,11 @@ source "labs/common-eks/scripts/bind-current-identity.sh"
             analyze.load_document(PACKAGE / "fixtures" / "otel-only.json")
         )
         self.assertEqual(
-            otel["configuration"]["approach_interpretation"]["otel"],
+            otel["configuration"]["approach_interpretation"]["otel_top_level_setting"],
             "explicitly-enabled",
         )
         self.assertEqual(
-            otel["configuration"]["approach_interpretation"]["classic_root"],
+            otel["configuration"]["approach_interpretation"]["classic_top_level_setting"],
             "explicitly-disabled",
         )
         self.assertEqual(
@@ -391,7 +482,7 @@ source "labs/common-eks/scripts/bind-current-identity.sh"
             analyze.load_document(PACKAGE / "fixtures" / "agent-unhealthy.json")
         )
         self.assertEqual(
-            legacy["configuration"]["approach_interpretation"]["legacy_nested"],
+            legacy["configuration"]["approach_interpretation"]["old_compatibility_setting"],
             "explicitly-enabled",
         )
         self.assertEqual(

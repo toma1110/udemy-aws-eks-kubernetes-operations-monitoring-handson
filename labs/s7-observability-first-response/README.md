@@ -31,7 +31,7 @@ df -h "$HOME"
 - AWS CLI と kubectl の version が表示される。
 - CloudShell の `$HOME` に空き容量がある。永続領域は Region ごとに 1 GB です。
 
-AWS Management Console 上の account 表示が利用予定と異なる場合は停止してください。後の準備 script は現在の STS identity を Git 外の private file へ保存し、account ID や ARN を terminal へ表示しません。
+AWS Management Console 上の account 表示が利用予定と異なる場合は停止してください。後の準備 script は現在の STS identity を Git 管理外の非公開ファイルへ保存し、account ID や ARN を terminal へ表示しません。
 
 ## 2. 教材を準備する
 
@@ -69,9 +69,9 @@ chmod +x "$S7_DIR"/scripts/*.sh
 
 CloudWatch Observability add-on がないことも有効な診断結果です。この Section のために add-on や権限を追加せず、「add-on 不在」を最初の原因候補として記録します。
 
-## 4. private 観察領域を準備する
+## 4. 機密情報を含む観察記録の保存先を準備する
 
-今回の実行を区別する名前を作り、共通環境と同じ現在のSTS identityを使うGit管理外の領域を準備します。
+今回の実行を区別する名前を作り、共通環境と同じ現在の STS identity を使う Git 管理外の非公開領域を準備します。
 
 ```bash
 export S7_RUN_ID="$(date -u '+%Y%m%dT%H%M%SZ')-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
@@ -80,7 +80,7 @@ source "$S7_DIR/scripts/prepare-private-run.sh"
 "$S7_DIR/scripts/preflight.sh"
 ```
 
-期待結果は、account ID や ARN を含まない `Section 7 preflight passed` です。preflight と capture は、最初の AWS read として現在の default STS identity を取得し、共通環境が保持する唯一の private identity と完全一致することを毎回確認します。既存 run directory、Region 不一致、common stack/tag/context 不一致、現在 identity 不一致では停止します。
+期待結果は、account ID や ARN を含まない `Section 7 の事前確認が完了しました` です。preflight と capture は、最初の AWS read として現在の default STS identity を取得し、共通環境が保持する唯一の非公開 identity 記録と完全一致することを毎回確認します。今回用の保存先がすでにある場合、Region 不一致、common stack/tag/context 不一致、現在 identity 不一致では停止します。
 
 ## 5. add-on と Agent Pod を確認する
 
@@ -88,14 +88,14 @@ source "$S7_DIR/scripts/prepare-private-run.sh"
 "$S7_DIR/scripts/capture-observations.sh"
 ```
 
-script は次を private raw file へ保存します。
+script は次を Git 管理外の非公開ファイルへ保存します。
 
 - `amazon-cloudwatch-observability` add-on の status、health issue、設定
 - `amazon-cloudwatch` namespace の Pod、DaemonSet、ServiceAccount、ConfigMap、event
 - Node の Ready condition と taint
 - Container Insights の metric namespace と cluster prefix の log group
 
-取得 error の本文、ConfigMap の値、Agent log、AWS principal は private raw file だけへ保存し、terminal へ表示しません。add-on や namespace が存在しない場合も、欠落として判定できる status を保存します。read permission が拒否された場合は「存在しない」と読み替えません。
+取得 error の本文、ConfigMap の値、Agent log、AWS principal は Git 管理外の非公開ファイルだけへ保存し、terminal へ表示しません。機密情報を含む可能性があるため、Git へ追加したり共有したりしないでください。add-on や namespace が存在しない場合も、欠落として判定できる status を保存します。read permission が拒否された場合は「存在しない」と読み替えません。
 
 ## 6. メトリクス欠落を診断する
 
@@ -118,7 +118,7 @@ jq . "$S7_EVIDENCE_DIR/summary.json"
 
 ## 7. ログ欠落を診断する
 
-公開してよいredacted結果だけを正確に確認するため、次を実行します。
+機密情報を除いた要約だけを確認するため、次を実行します。
 
 ```bash
 jq '{logs, agent_logs, configuration, addon_configuration_values_present: .addon.configuration_values_present}' \
@@ -129,11 +129,11 @@ jq '{logs, agent_logs, configuration, addon_configuration_values_present: .addon
 
 - `agent_log_pipeline_config_present`: Agent ConfigMap に log pipeline 候補の非空設定があるかを示す。存在だけでは有効化や配送成功を証明しない。
 - `container_logs_override`: add-on の明示 override が `enabled` / `disabled` / `not-specified` / `not-observed` のどれかを示す。
-- `otel_container_insights_override`: 現行 OTel 方式のroot flag `otelContainerInsights.enabled`を同じ4状態で示す。`not-specified`の場合、OTel Container InsightsはAWS公式仕様上defaultでdisabledです。
-- `classic_container_insights_override`: Classic方式のroot flag `containerInsights.enabled`を同じ4状態で示す。未指定時の実効状態はadd-on version/defaultに依存するため断定しません。
-- `legacy_enhanced_observability_override`: legacy nested flag `agent.config.logs.metrics_collected.kubernetes.enhanced_container_insights`を同じ4状態で示す。旧設定との互換確認用であり、現行root flagの代用にはしません。
+- `otel_container_insights_override`: トップレベルの `otelContainerInsights.enabled` 設定を同じ4状態で示す。`not-specified`の場合、OTel Container InsightsはAWS公式仕様上defaultでdisabledです。
+- `classic_container_insights_override`: トップレベルのClassic設定 `containerInsights.enabled`を同じ4状態で示す。未指定時の実効状態はadd-on version/defaultに依存するため断定しません。
+- `legacy_enhanced_observability_override`: 旧来の階層にある `agent.config.logs.metrics_collected.kubernetes.enhanced_container_insights` 設定を同じ4状態で示す。旧設定との互換確認用であり、2つのトップレベル設定の代用にはしません。
 - `effective_log_collection`: 明示 override がある場合だけ `explicitly-enabled-by-addon-override` または `explicitly-disabled` とし、default依存なら `not-determined` とする。
-- `approach_interpretation.configured_mode_signal`: root/legacy flagの組み合わせから `otel-only-configured`、`dual-publish-configured`、`classic-only-configured`、`legacy-classic-configured`、`default-dependent`などを示す。これは設定の分類であり、実際にデータが配送されている証明ではありません。
+- `approach_interpretation.configured_mode_signal`: 2つのトップレベル設定と旧来の階層設定の組み合わせから `otel-only-configured`、`dual-publish-configured`、`classic-only-configured`、`legacy-classic-configured`、`default-dependent`などを示す。これは設定の分類であり、実際にデータが配送されている証明ではありません。
 - `addon_configuration_values_present`: add-on に設定文字列がある事実だけを示し、enhanced observability や log collection が有効であることは示さない。
 
 `agent_logs` はAgent log本文を読めたかを示します。`observed: false` の場合、`reason` は `read-denied`、`no-target`、`unavailable` のいずれかです。この状態では `agent_signals` のfalseを「AccessDenied、network error、configuration errorがなかった」という否定証拠に使いません。権限、対象Pod、または一時的な取得失敗を先に確認してください。
@@ -160,7 +160,7 @@ log group がない場合、Region、add-on、Agent、設定、権限のどこ�
 | `CrashLoopBackOff` | Agent 設定 | current / previous log と ConfigMap を確認 |
 | Agent logが`read-denied` | log read権限 | 権限を追加せず、cluster管理者へ必要なread権限を確認 |
 | Agent logが`no-target` | Agent Pod選択 | labelとAgent Podの存在を確認 |
-| Agent logが`unavailable` | log取得経路 | private errorを確認し、同じ対象でcaptureを再試行 |
+| Agent logが`unavailable` | log取得経路 | Git 管理外のエラー記録を確認し、同じ対象でcaptureを再試行 |
 | Agent log に `AccessDenied` | IAM / Pod Identity | denied action と利用主体を管理者へ共有 |
 | timeout / DNS error | network | security group、DNS、CloudWatch endpoint / public egress を確認 |
 | metric だけ欠落 | enhanced observability / 時間範囲 | add-on 設定と CloudWatch 表示条件を確認 |
@@ -170,7 +170,7 @@ log group がない場合、Region、add-on、Agent、設定、権限のどこ�
 
 ## 9. Cleanup
 
-Section 7 は AWS resource や Kubernetes resource を作りません。最初に、この Section の exact private 観察runを削除し、空になった `s7-observations` directoryも削除します。別runや未知のfileがある場合は何も削除せず停止します。cleanup後のrun-private directoryには共通の `current-sts-identity.json` だけを残します。
+Section 7 は AWS resource や Kubernetes resource を作りません。最初に、今回の観察記録だけを削除し、空になった `s7-observations` directoryも削除します。別の観察記録や不明なfileがある場合は何も削除せず停止します。cleanup後の共通の非公開保存先には `current-sts-identity.json` だけを残します。
 
 ```bash
 "$S7_DIR/scripts/cleanup-local-evidence.sh"
@@ -194,7 +194,7 @@ Section 7 の read-only 診断 command は新しい resource を作りません�
 
 ## Troubleshooting
 
-- `Section 7 preflight passed` にならない: 最初の error を private log で確認し、capture へ進みません。
+- `Section 7 の事前確認が完了しました` にならない: 最初の error を Git 管理外の非公開ログで確認し、capture へ進みません。
 - `addon-not-found`: 欠落原因の一つです。この演習中に add-on を作らず、cluster 管理者へ共有します。
 - `read-denied`: 不在とは判定しません。必要な read permission を管理者へ確認します。
 - `Pending`: Pod event、Node taint、DaemonSet toleration、resource request を確認します。
@@ -202,7 +202,7 @@ Section 7 の read-only 診断 command は新しい resource を作りません�
 - `CrashLoopBackOff`: current log に加えて `--previous` の log を確認します。
 - log group がない: Region と prefix を再確認し、Agent / add-on 不在と IAM / network を分けます。
 - metric がない: CloudWatch の時間範囲、add-on 設定、enhanced observability、Agent 状態を確認します。
-- run directory collision: 古い観察記録を上書きせず、新しい `S7_RUN_ID` で最初から実行します。
+- 観察記録の保存先がすでにある: 古い記録を上書きせず、新しい `S7_RUN_ID` で最初から実行します。
 - cleanup 後の確認が停止する: 共通 identity を消さず、表示された exact residual を解消します。
 
 ## 公式資料

@@ -9,9 +9,9 @@ raw="$evidence_dir/raw"
 status="$evidence_dir/status"
 private_log="$status/capture-private.log"
 [[ -z "$(find "$raw" -mindepth 1 -maxdepth 1 ! -name cluster.json -print -quit)" ]] ||
-  die "Section 7 raw directory contains stale capture files."
+  die "Section 7 の保存先に以前の取得ファイルが残っています。新しい S7_RUN_ID でやり直してください。"
 assert_s7_target >>"$private_log" 2>&1 || {
-  printf 'ERROR: Exact target revalidation failed. Inspect the private capture log.\n' >&2
+  printf 'エラー: 対象の再確認に失敗しました。Git管理外の非公開ログを確認してください。\n' >&2
   exit 1
 }
 
@@ -208,4 +208,4 @@ jq -n \
   }' >"$evidence_dir/normalized-observations.json"
 
 chmod 600 "$raw"/* "$status"/* "$evidence_dir/normalized-observations.json"
-printf 'Section 7 observations captured into the private run directory.\n'
+printf 'Section 7 の観察結果を Git管理外の保存先へ記録しました。\n'
