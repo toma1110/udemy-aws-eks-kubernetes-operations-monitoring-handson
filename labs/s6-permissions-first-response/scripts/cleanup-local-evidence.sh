@@ -15,4 +15,4 @@ rm -rf -- "$evidence_dir"
 rmdir -- "$S6_OBSERVATION_ROOT"
 [[ -f "$CURRENT_STS_IDENTITY_FILE" ]] ||
   die "Governed common identity must remain until post-guard verification."
-printf 'Run evidence removed. Private identity is preserved until common cleanup and final revalidation.\n'
+printf 'Section 6の観察結果を削除しました。AWSアカウントの確認情報は共通環境の削除確認まで残します。\n'

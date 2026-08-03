@@ -20,4 +20,4 @@ trap cleanup_s6_atomic_candidate EXIT INT TERM
 create_s6_run_directory
 trap - EXIT INT TERM
 validate_s6_evidence_directory >/dev/null
-printf 'Private Section observation run prepared: %s\n' "$S6_RUN_ID"
+printf '観察結果の保存先を準備しました: %s\n' "$S6_RUN_ID"

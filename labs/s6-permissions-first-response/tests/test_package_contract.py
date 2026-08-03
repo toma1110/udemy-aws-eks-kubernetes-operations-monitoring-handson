@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -31,7 +32,18 @@ class PackageContractTests(unittest.TestCase):
         ):
             self.assertIn(token, text)
         self.assertNotIn("```powershell", text.lower())
-        for internal_word in ("fixture", "回帰", "Worker", "Reviewer", "QA"):
+        for internal_word in (
+            "fixture",
+            "回帰",
+            "Worker",
+            "Reviewer",
+            "QA",
+            "公開アナライザー",
+            "公開ラボ",
+            "live AWS",
+            "同じ対象",
+            "読み取りの確認",
+        ):
             self.assertNotIn(internal_word, text)
 
     def test_staged_prerequisites_are_cloudshell_first(self):
@@ -52,6 +64,17 @@ class PackageContractTests(unittest.TestCase):
         ):
             self.assertIn(token, text)
         self.assertNotIn("```powershell", text.lower())
+
+    def test_reviewed_common_dependency_bytes_are_present(self):
+        common = PACKAGE.parent / "common-eks" / "scripts"
+        expected = {
+            "bind-current-identity.sh": "35065d40f4fb017d96be980d0d560068bf7d70a639c7cfbcdd84092614838382",
+            "post-guard-verify.sh": "3c53f8ee94ef70e3e7691bb81ec0d1eaca4c70d2d6541e8b3fd7301b0468e669",
+        }
+        for name, expected_sha256 in expected.items():
+            with self.subTest(name=name):
+                actual = hashlib.sha256((common / name).read_bytes()).hexdigest()
+                self.assertEqual(actual, expected_sha256)
 
     def test_scripts_are_read_only_except_exact_local_cleanup(self):
         capture = (PACKAGE / "scripts" / "capture-observations.sh").read_text(
@@ -104,9 +127,12 @@ class PackageContractTests(unittest.TestCase):
             "assert_s6_inputs",
         ):
             self.assertIn(token, common)
-        for name in ("preflight.sh", "capture-observations.sh"):
-            text = (PACKAGE / "scripts" / name).read_text(encoding="utf-8")
-            self.assertIn("assert_s6_target", text)
+        capture = (PACKAGE / "scripts" / "capture-observations.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(capture.count("assert_s6_target"), 1)
+        self.assertFalse((PACKAGE / "scripts" / "preflight.sh").exists())
+        self.assertFalse((PACKAGE / "scripts" / "status-redacted.sh").exists())
 
     def test_run_directory_is_atomic_no_clobber_and_rejects_stale_raw(self):
         prepare = (PACKAGE / "scripts" / "prepare-private-run.sh").read_text(
@@ -159,32 +185,24 @@ if create_s6_run_directory; then exit 91; fi
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_redacted_status_does_not_call_bound_status_script(self):
+    def test_single_capture_entrypoint_redacts_exact_target(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
-        status = (PACKAGE / "scripts" / "status-redacted.sh").read_text(
+        capture = (PACKAGE / "scripts" / "capture-observations.sh").read_text(
             encoding="utf-8"
         )
         self.assertNotIn('"$COMMON_EKS_DIR/scripts/status.sh"', readme)
-        self.assertNotIn("/scripts/status.sh", status)
-        self.assertIn("assert_s6_common_target_redacted", status)
-        self.assertIn("ReadyNodes=%s", status)
-        self.assertNotIn("AWS_ACCOUNT_ID", status)
+        self.assertNotIn("status-redacted.sh", readme)
+        self.assertNotIn("preflight.sh", readme)
+        self.assertEqual(readme.count('"$S6_DIR/scripts/capture-observations.sh"'), 1)
+        self.assertIn("観察対象を確認しました", capture)
+        self.assertNotIn("AWS_ACCOUNT_ID", capture)
 
-    def test_learner_serviceaccount_command_exposes_presence_not_annotation_value(self):
+    def test_learner_uses_one_private_capture_instead_of_duplicate_manual_reads(self):
         readme = (PACKAGE / "README.md").read_text(encoding="utf-8")
-        self.assertNotIn(
-            '"$TARGET_SERVICE_ACCOUNT" \\\n  -n "$TARGET_NAMESPACE" \\\n  -o yaml',
-            readme,
-        )
-        self.assertIn("irsa_annotation_present:", readme)
-        self.assertIn(
-            '(.metadata.annotations["eks.amazonaws.com/role-arn"] != null)',
-            readme,
-        )
-        learner_block = readme[
-            readme.index("## 5. ServiceAccount")
-            : readme.index("## 6. AWS側")
-        ]
+        self.assertNotIn("kubectl get serviceaccount", readme)
+        self.assertNotIn("kubectl get rolebindings", readme)
+        self.assertNotIn("kubectl get clusterrolebindings", readme)
+        learner_block = readme[readme.index("## 5.") : readme.index("## 6.")]
         self.assertNotIn("arn:aws:iam::", learner_block)
         self.assertNotRegex(learner_block, r"(?<!\d)\d{12}(?!\d)")
 
@@ -374,6 +392,7 @@ if create_s6_run_directory; then exit 91; fi
             self.assertEqual(summary["pod_identity"]["listed_count"], 1)
             self.assertEqual(summary["pod_identity"]["described_count"], 0)
             self.assertEqual(summary["pod_identity"]["detail_failure_count"], 1)
+            self.assertIsNone(summary["pod_identity"]["target_association_present"])
             self.assertEqual(
                 summary["pod_identity"]["detail_not_observed_reasons"],
                 ["read-failed"],

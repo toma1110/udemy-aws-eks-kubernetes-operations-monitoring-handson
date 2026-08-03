@@ -167,6 +167,7 @@ def build_summary(
             "complete": False,
         }
     )
+    pod_identity_complete = pod_detail.get("complete") is True
     return {
         "schema": "udemy4-c010-s6-redacted-observation-v1",
         "target": {"namespace": namespace, "service_account": service_account},
@@ -189,13 +190,18 @@ def build_summary(
             "not_observed_reason": (
                 None if pod_identity_status["observed"] else pod_identity_status["reason"]
             ),
-            "complete": pod_detail.get("complete") is True,
+            "complete": pod_identity_complete,
             **detail_observation(pod_detail),
             "listed_count": pod_detail.get("association_count"),
             "described_count": int(pod_detail.get("described_count") or 0),
-            "target_association_present": any(
-                row["namespace"] == namespace and row["service_account"] == service_account
-                for row in pod_identities
+            "target_association_present": (
+                any(
+                    row["namespace"] == namespace
+                    and row["service_account"] == service_account
+                    for row in pod_identities
+                )
+                if pod_identity_complete
+                else None
             ),
             "associations": pod_identities,
         },
@@ -210,12 +216,12 @@ def build_summary(
             "described_count": int(access_detail.get("described_count") or 0),
             "policy_listed_count": int(access_detail.get("policy_listed_count") or 0),
             "entries": access_rows(input_dir),
-            "interpretation": "EKS access entries authorize IAM principals to enter the cluster; they are not Pod IAM permissions.",
+            "interpretation": "EKS access entryは人や運用ツールのIAM userまたはroleがclusterへ入るための設定で、PodのAWS権限ではありません。",
         },
         "interpretation": [
-            "Kubernetes RBAC bindings and AWS IAM relationships are separate authorization layers.",
-            "An IRSA annotation or Pod Identity association indicates a relationship, not the effective permission result.",
-            "Missing monitoring data alone does not prove AccessDenied; inspect the collector, configuration, Region, and time range.",
+            "Kubernetes RBACとAWS IAMは別々に許可を判定します。",
+            "IRSA annotationやPod Identity associationが見つかっても、要求した操作が許可されることまでは証明しません。",
+            "監視データがないだけではAccessDeniedと判断せず、収集Agent、設定、Region、時間範囲を確認します。",
         ],
     }
 

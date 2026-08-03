@@ -6,25 +6,25 @@
     "s6-l5"
   ],
   "required_observations": [
-    "the exact ServiceAccount can be read",
-    "RoleBinding and ClusterRoleBinding subjects are compared separately",
-    "IRSA annotation presence is reported without exposing the role ARN",
-    "Pod Identity associations are summarized by namespace and ServiceAccount",
-    "EKS access entries are summarized without principal ARN or account ID"
+    "指定したServiceAccountを取得できる",
+    "RoleBindingとClusterRoleBindingの結び付け先を分けて確認できる",
+    "IAM role ARNを表示せずにIRSA annotationの有無を確認できる",
+    "Pod Identity associationをNamespaceとServiceAccountで確認できる",
+    "principal ARNやAWSアカウントIDを表示せずにEKS access entryを確認できる"
   ],
   "partial_observation": {
-    "optional_eks_reads": "continue other layers; report list-operation totals separately from successful describes, require access-entry describe and associated-policy list success for completeness, and aggregate redacted detail failure counts/reasons",
-    "denied_read": "not observed; never interpreted as an absent relationship"
+    "optional_eks_reads": "取得できた項目は残し、取得できなかった項目と理由を分けて記録する。Pod Identityの個別取得が不完全ならtarget_association_presentはnullにする",
+    "denied_read": "未確認として記録し、関連付けが存在しないとは判断しない"
   },
   "non_claims": [
-    "a relationship does not prove effective permission",
-    "missing monitoring data alone does not prove AccessDenied",
-    "this package grants no learner permission and creates no Section resource"
+    "関連付けが見つかっても要求した操作の許可までは証明しない",
+    "監視データがないだけではAccessDeniedを証明しない",
+    "この教材は権限を追加せずSection固有のresourceを作成しない"
   ],
   "cleanup": {
     "section_cloud_resources": "none",
     "section_kubernetes_resources": "none",
-    "phase_one": "remove only the exact Section observation directory and preserve the governed common identity",
-    "phase_two": "run common delete.sh then common post-guard-verify.sh; only the governed verifier may remove identity after exact Account/Arn/UserId byte and residual revalidation"
+    "phase_one": "Section 6の観察結果だけを削除し、AWSアカウントの確認情報は共通環境の削除確認まで残す",
+    "phase_two": "共通環境を終了する場合はdelete.shの後にpost-guard-verify.shを実行し、関連resourceが残っていないことを確認する"
   }
 }

@@ -8,14 +8,13 @@ assert_s6_target
 evidence_dir="$(validate_s6_evidence_directory)"
 raw_dir="$evidence_dir/raw"
 status_dir="$evidence_dir/status"
+printf '観察対象を確認しました: Region=%s, Namespace=%s, ServiceAccount=%s\n' \
+  "$REGION" "$TARGET_NAMESPACE" "$TARGET_SERVICE_ACCOUNT"
 
 [[ -z "$(find "$raw_dir" -mindepth 1 -maxdepth 1 -print -quit)" ]] ||
   die "Run-specific raw directory is not empty; stale-file inclusion is rejected."
 find "$status_dir" -mindepth 1 -maxdepth 1 -type f \
   ! -name 'common-target-private.log' \
-  ! -name 'serviceaccount-private.log' \
-  ! -name 'cluster-private.json' \
-  ! -name 'nodes-private.json' \
   -print -quit |
   grep -q . &&
   die "Run-specific status directory contains unexpected stale files."
@@ -177,4 +176,4 @@ else
 fi
 chmod 600 "$status_dir/pod_identity_detail.json"
 
-printf 'Read-only capture finished. Optional AWS layers may be not observed; run analyze.py for the redacted summary.\n'
+printf '観察結果の取得が完了しました。続けてanalyze.pyでsummary.jsonを作成してください。\n'

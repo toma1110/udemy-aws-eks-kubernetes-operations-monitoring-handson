@@ -134,11 +134,4 @@ assert_s6_target() {
   local evidence_dir
   evidence_dir="$(validate_s6_evidence_directory)"
   assert_s6_common_target_redacted "$evidence_dir"
-  if ! kubectl get serviceaccount "$TARGET_SERVICE_ACCOUNT" \
-    -n "$TARGET_NAMESPACE" -o name >"$evidence_dir/status/serviceaccount-private.log" 2>&1; then
-    chmod 600 "$evidence_dir/status/serviceaccount-private.log"
-    printf 'ERROR: Exact ServiceAccount validation failed. Inspect the private status log.\n' >&2
-    return 1
-  fi
-  chmod 600 "$evidence_dir/status/serviceaccount-private.log"
 }

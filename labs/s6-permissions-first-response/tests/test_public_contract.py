@@ -16,8 +16,6 @@ class PublicLabContractTests(unittest.TestCase):
             "templates/observation-notes.md",
             "scripts/common.sh",
             "scripts/prepare-private-run.sh",
-            "scripts/status-redacted.sh",
-            "scripts/preflight.sh",
             "scripts/capture-observations.sh",
             "scripts/cleanup-local-evidence.sh",
         ]
@@ -44,15 +42,9 @@ class PublicLabContractTests(unittest.TestCase):
 
     def test_learner_output_redacts_identity(self):
         readme = (LAB / "README.md").read_text(encoding="utf-8")
-        self.assertIn("irsa_annotation_present:", readme)
-        self.assertNotIn(
-            '"$TARGET_SERVICE_ACCOUNT" \\\n  -n "$TARGET_NAMESPACE" \\\n  -o yaml',
-            readme,
-        )
-        learner_block = readme[
-            readme.index("## 5. ServiceAccount")
-            : readme.index("## 6. AWS側")
-        ]
+        self.assertNotIn("kubectl get serviceaccount", readme)
+        self.assertEqual(readme.count('"$S6_DIR/scripts/capture-observations.sh"'), 1)
+        learner_block = readme[readme.index("## 5.") : readme.index("## 6.")]
         self.assertNotIn("arn:aws:iam::", learner_block)
         self.assertIsNone(re.search(r"(?<!\d)\d{12}(?!\d)", learner_block))
 
@@ -85,4 +77,3 @@ class PublicLabContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
