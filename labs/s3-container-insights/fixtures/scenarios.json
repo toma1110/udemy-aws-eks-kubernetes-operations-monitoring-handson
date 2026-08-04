@@ -1,0 +1,115 @@
+{
+  "schema": "s3-container-insights-comparison-v1",
+  "cases": [
+    {
+      "id": "collection-gap",
+      "target": {
+        "region": "ap-northeast-1",
+        "cluster": "training-eks",
+        "namespace": "checkout",
+        "workload": "checkout-api",
+        "pod": "checkout-api-7f85d6c9b4-k2p9m",
+        "node": "ip-10-0-1-21.ap-northeast-1.compute.internal"
+      },
+      "window": {
+        "start": "2026-08-05T00:00:00Z",
+        "end": "2026-08-05T00:10:00Z"
+      },
+      "collection": {
+        "addon_status": "ACTIVE",
+        "controller_kind": "DaemonSet",
+        "controller_name": "cloudwatch-agent",
+        "desired": 2,
+        "current": 2,
+        "ready": 1
+      },
+      "cloudwatch": {
+        "target": {
+          "region": "ap-northeast-1",
+          "cluster": "training-eks",
+          "namespace": "checkout",
+          "workload": "checkout-api",
+          "pod": "checkout-api-7f85d6c9b4-k2p9m",
+          "node": "ip-10-0-1-21.ap-northeast-1.compute.internal"
+        },
+        "window": {
+          "start": "2026-08-05T00:00:00Z",
+          "end": "2026-08-05T00:10:00Z"
+        },
+        "metric": "pod_cpu_utilization",
+        "signal": "missing",
+        "datapoints": []
+      },
+      "kubectl": {
+        "target": {
+          "region": "ap-northeast-1",
+          "cluster": "training-eks",
+          "namespace": "checkout",
+          "workload": "checkout-api",
+          "pod": "checkout-api-7f85d6c9b4-k2p9m",
+          "node": "ip-10-0-1-21.ap-northeast-1.compute.internal"
+        },
+        "observed_at": "2026-08-05T00:06:00Z",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "signal": "normal"
+      }
+    },
+    {
+      "id": "resource-anomaly",
+      "target": {
+        "region": "ap-northeast-1",
+        "cluster": "training-eks",
+        "namespace": "checkout",
+        "workload": "checkout-api",
+        "pod": "checkout-api-7f85d6c9b4-r8v4q",
+        "node": "ip-10-0-2-34.ap-northeast-1.compute.internal"
+      },
+      "window": {
+        "start": "2026-08-05T01:00:00Z",
+        "end": "2026-08-05T01:10:00Z"
+      },
+      "collection": {
+        "addon_status": "ACTIVE",
+        "controller_kind": "DaemonSet",
+        "controller_name": "cloudwatch-agent",
+        "desired": 2,
+        "current": 2,
+        "ready": 2
+      },
+      "cloudwatch": {
+        "target": {
+          "region": "ap-northeast-1",
+          "cluster": "training-eks",
+          "namespace": "checkout",
+          "workload": "checkout-api",
+          "pod": "checkout-api-7f85d6c9b4-r8v4q",
+          "node": "ip-10-0-2-34.ap-northeast-1.compute.internal"
+        },
+        "window": {
+          "start": "2026-08-05T01:00:00Z",
+          "end": "2026-08-05T01:10:00Z"
+        },
+        "metric": "pod_cpu_utilization",
+        "signal": "sustained_high_cpu",
+        "datapoints": [88.0, 92.0, 91.0]
+      },
+      "kubectl": {
+        "target": {
+          "region": "ap-northeast-1",
+          "cluster": "training-eks",
+          "namespace": "checkout",
+          "workload": "checkout-api",
+          "pod": "checkout-api-7f85d6c9b4-r8v4q",
+          "node": "ip-10-0-2-34.ap-northeast-1.compute.internal"
+        },
+        "observed_at": "2026-08-05T01:06:00Z",
+        "phase": "Running",
+        "ready": true,
+        "restarts": 0,
+        "signal": "high_cpu"
+      }
+    }
+  ]
+}

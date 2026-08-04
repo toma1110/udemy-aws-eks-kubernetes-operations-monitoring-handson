@@ -25,7 +25,7 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 | --- | --- | --- |
 | s2-l3 | 共通EKS上のbaseline workloadを`kubectl get`で確認する | [labs/s2-kubernetes-baseline/README.md](labs/s2-kubernetes-baseline/README.md) |
 | s2-l4 | 実Podを`describe`、`logs`、eventsで深掘りする | [labs/s2-kubernetes-baseline/README.md](labs/s2-kubernetes-baseline/README.md) |
-| s3-l4 | Container Insightsの画面を読む | [labs/03-container-insights.md](labs/03-container-insights.md) |
+| s3-l4 | Container Insightsと`kubectl`を同じPod・Node・時間帯で照合する | [labs/s3-container-insights/README.md](labs/s3-container-insights/README.md) |
 | s4-l2 / s4-l3 | 実EKS JobログをCloudWatch Logsへ送り、Logs Insightsで絞る。AWSを使えない場合はfixtureで回帰確認する | [labs/s4-cloudwatch-logs-insights/README.md](labs/s4-cloudwatch-logs-insights/README.md) |
 | s5-l3 / s5-l4 | 短命なEKS基盤でPendingとCrashLoopBackOffを調べる | [labs/s5-pod-resource-first-response/README.md](labs/s5-pod-resource-first-response/README.md) |
 | s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限の関係を読み取り専用で確認する | [labs/s6-permissions-first-response/README.md](labs/s6-permissions-first-response/README.md) |

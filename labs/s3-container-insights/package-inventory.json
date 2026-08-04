@@ -1,0 +1,11 @@
+{
+  "schema": "s3-package-inventory-v1",
+  "files": {
+    "analyze.py": "4d4442619082541e702cdcab06ca63128cebdcf3f2a7322b3d36cd126e776738",
+    "expected-results.json": "58af11fdd6a7693ebcb8198e9fd242d30fc53b0ce90d948284c3a1923c97bcf2",
+    "fixtures/manifest.json": "f765cc5191655461fa9f4f650608de470c4c321af43093b83edaaa8fea60fb23",
+    "fixtures/scenarios.json": "9897852517cd8a004eb92efe017173afc4741cec3f20bafbffb8bc3434adf23f",
+    "README.md": "776ca05c56c661a2358b11b4d1f39458df9d13dd7c090355ed5e20def09f16f1",
+    "tests/test_analyze.py": "3e4db6a9f3fb1af4920ac63efd3b1b7897ce9a37baabefe122d0bd06fd269e4d"
+  }
+}
