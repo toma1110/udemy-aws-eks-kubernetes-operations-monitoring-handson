@@ -1,14 +1,14 @@
 # Section 5: Pending / CrashLoopBackOffの初動切り分け
 
-このハンズオンでは、コース共通のCloudFormationテンプレートで作成したEKSクラスタを使います。AWS Management ConsoleとAWS CloudShellから、Podが起動しない原因と再起動を繰り返す原因を順番に調べます。
+このハンズオンでは、コース共通のCloudFormationテンプレートで作成したEKSクラスタを使います。AWS Management ConsoleとAWS CloudShellから、PodがNodeへ配置されず待機する`Pending`と、起動後すぐに終了して再起動を繰り返す`CrashLoopBackOff`を調べます。状態名だけで原因を決めず、Podの設定、Nodeの空き容量、Kubernetesのイベント、直前のログを結び付けて、次の安全な確認先を選びます。
 
 ハンズオンURL:
 https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-handson/tree/main/labs/s5-pod-resource-first-response
 
 ## 学習目標
 
-1. Pending Podのrequest、Nodeの空き容量、`FailedScheduling` eventを確認する。
-2. CrashLoopBackOffのlog、終了理由、exit code、restart countを確認する。
+1. Pending Podが要求するメモリ量、Nodeが割り当てられるメモリ量、配置失敗を示す`FailedScheduling`イベントを確認する。
+2. CrashLoopBackOffの現在と直前のログ、終了理由、終了コード、再起動回数を確認する。
 3. 状態名だけで原因を決めず、確認できた事実から次の確認項目を選ぶ。
 4. Section 5で作成したPodを削除してから、共通EKS環境を削除する。
 
@@ -18,7 +18,17 @@ https://github.com/toma1110/udemy-aws-eks-kubernetes-operations-monitoring-hands
 - コマンドはすべてAWS CloudShellのBashで実行します。
 - 共通EKS環境の作成から削除まで、続けて作業できる時間を確保します。
 
-この演習では、namespace内にPodを3個だけ作成します。Load Balancer、NAT Gateway、PVCは作成せず、Nodeの設定やIAM権限も変更しません。CrashLoopBackOffを確認するPodは10分で停止します。
+この演習では、専用のnamespace（Kubernetes内でリソースを分ける単位）にPodを3個だけ作成します。Load Balancer、NAT Gateway、PVCは作成せず、Nodeの設定やIAM権限も変更しません。CrashLoopBackOffを確認するPodは10分で停止します。
+
+## AWSを使わずに確認順序を練習する
+
+用意されたfixture（確認結果のサンプル）を分析し、PendingとCrashLoopBackOffでどの情報を先に確認するかを、AWSアカウントやKubernetesクラスタなしで練習できます。このディレクトリでPython 3.11以上を使って実行します。
+
+```bash
+python analyze.py --check
+```
+
+期待する表示は`PASS: fixtures and analysis match expected-results.json`です。Pythonのversionに関するエラーが出た場合は`python --version`で3.11以上か確認します。fixtureや期待結果の不一致が表示された場合は、`fixtures/`と`expected-results.json`を同じ取得時点のファイルへ戻してから再実行し、内容を自己判断で書き換えないでください。
 
 ## 1. CloudShellを開く
 
@@ -40,7 +50,7 @@ df -h "$HOME"
 - AWS CLIとkubectlのversionが表示される。
 - CloudShellの`$HOME`に空き容量がある。CloudShellの永続領域はRegionごとに1 GBです。
 
-続けて、教材リポジトリをCloudShellの`$HOME`へ準備します。既に同じ名前のdirectoryがある場合は、正しいGit repositoryで変更中のfileがないことを確認してからfast-forwardします。別のdirectoryや変更中のfileを上書きしません。
+続けて、教材リポジトリをCloudShellの`$HOME`へ準備します。すでに同じ名前のフォルダがある場合は、教材のGitリポジトリであり、変更中のファイルがないことを確認してから最新版へ更新します。別のフォルダや変更中のファイルは上書きしません。
 
 ```bash
 export HANDSON_REPO="$HOME/udemy-aws-eks-kubernetes-operations-monitoring-handson"
@@ -69,7 +79,7 @@ cd "$HANDSON_REPO/labs/s5-pod-resource-first-response"
 
 ## 2. 共通EKS環境を作る
 
-Section 5のdirectoryから、共通EKS環境の手順へ移動します。
+Section 5のフォルダから、共通EKS環境の手順へ移動します。ここでは演習対象のクラスタとNodeを用意し、Podを配置できる状態まで確認します。
 
 ```bash
 cd ../common-eks
@@ -93,6 +103,8 @@ chmod +x "$COMMON_EKS_DIR"/scripts/*.sh
 
 ## 3. Section 5のPodを作る
 
+ここでは原因が異なる3つのPodを専用namespaceへ作ります。作成直後の一覧は、どのPodが待機し、どのPodが再起動しているかを見分けるために使います。
+
 ```bash
 cd ../s5-pod-resource-first-response
 export S5_DIR="$(pwd)"
@@ -113,6 +125,8 @@ image pullや再起動のタイミングにより、一時的な表示は異な�
 
 ## 4. Pendingを調べる
 
+まずPodの詳細とイベントで「なぜ配置されなかったか」を確認し、次にNode側の割り当て可能なメモリ量と比べます。Node増強やPod変更はまだ行いません。
+
 ```bash
 kubectl describe pod udemy4-c010-s5-20260724-pending-capacity -n udemy4-c010-s5-20260724
 kubectl get events -n udemy4-c010-s5-20260724 --sort-by=.lastTimestamp
@@ -121,13 +135,15 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,ALLOCATABLE_MEMORY:.stat
 
 確認する場所:
 
-- Podが要求するmemoryは`8Gi`か。
-- eventに`FailedScheduling`があるか。
-- Nodeの`ALLOCATABLE_MEMORY`はPodのrequestを満たせるか。
+- Podが要求するメモリ量は`8Gi`か。
+- イベントに、配置できなかったことを示す`FailedScheduling`があるか。
+- Nodeの`ALLOCATABLE_MEMORY`（Podへ割り当てられるメモリ量）は、Podの要求量を満たせるか。
 
-このPodはscheduleされないため、Node上で8 GiBのmemoryを消費しません。
+期待結果は、`FailedScheduling`とメモリ不足を示すメッセージがあり、PodがNodeへ配置されていないことです。このPodは配置されないため、Node上で8 GiBのメモリを消費しません。この結果なら、最初の原因候補は「Podの要求量が現在のNode容量を超えている」です。
 
 ## 5. CrashLoopBackOffを調べる
+
+次に、アプリケーションの終了とメモリ上限超過を見分けます。`--previous`は、再起動前のコンテナが残したログを読むための指定です。
 
 ```bash
 kubectl describe pod udemy4-c010-s5-20260724-crashloop-app -n udemy4-c010-s5-20260724
@@ -140,14 +156,14 @@ kubectl logs udemy4-c010-s5-20260724-crashloop-memory -n udemy4-c010-s5-20260724
 
 確認する場所:
 
-- 現在と直前のlogに何が記録されているか。
+- 現在と直前のログに何が記録されているか。
 - `Last State`の`Reason`と`Exit Code`は何か。
 - `Restart Count`は増えているか。
-- memory用Podの直前終了理由は`OOMKilled`か。
+- メモリ上限を試すPodの直前終了理由は`OOMKilled`か。
 
-`CrashLoopBackOff`という表示だけで、memory不足やapplicationの不具合と決めつけないでください。log、終了理由、limit、eventを組み合わせて判断します。
+期待結果は、アプリケーション用Podでは終了コード`42`と意図的な終了を示すログ、メモリ用Podでは`OOMKilled`を確認できることです。`CrashLoopBackOff`という表示だけでメモリ不足やアプリケーション不具合と決めつけず、ログ、終了理由、メモリ上限、イベントを組み合わせて判断します。
 
-調査結果をまとめて保存する場合は、次を実行します。このscriptは`get`、`describe`、`logs`だけを使用します。
+調査結果をまとめて保存する場合は、次を実行します。このスクリプトは状態を取得する`get`、`describe`、`logs`だけを使用し、Podや設定を変更しません。
 
 ```bash
 "$S5_DIR/scripts/capture-evidence.sh"
@@ -156,13 +172,19 @@ df -h "$HOME"
 
 ## 6. Section 5のPodを削除する
 
+Section 5で作成した専用namespaceだけを削除します。スクリプトは対象を確認してから削除し、namespaceが残っていないことまで検査します。
+
 ```bash
 "$S5_DIR/scripts/cleanup-section.sh"
 ```
 
 namespaceの削除確認に失敗した場合は、共通EKS環境の削除へ進まないでください。
 
+期待結果は`Section namespace cleanup verified.`です。この表示がなければ、エラーに示されたnamespaceを確認してから再実行します。
+
 ## 7. 共通EKS環境を削除する
+
+Section 5のnamespaceが消えたことを確認できたら、課金の中心となる共通EKS環境を削除します。
 
 ```bash
 "$COMMON_EKS_DIR/scripts/delete.sh"
@@ -174,7 +196,7 @@ namespaceの削除確認に失敗した場合は、共通EKS環境の削除へ�
 - CloudFormation stackとEKSクラスタが存在しない。
 - この演習で作成したEC2、EBS、ENI、CloudWatch Logsが残っていない。
 
-削除scriptが残存リソースを検出した場合は、表示された対象を確認し、削除完了までAWS Management Consoleを閉じないでください。
+削除スクリプトが残存リソースを検出した場合は、表示された対象を確認し、削除完了までAWS Management Consoleを閉じないでください。Section 5のnamespace、CloudFormation stack、EKSクラスタ、関連するEC2、EBS、ENI、CloudWatch Logsのいずれかが残っている間は、cleanup完了と判断しません。
 
 ## 費用
 
@@ -183,9 +205,9 @@ Section 5のPodは、追加のLoad Balancer、NAT Gateway、EBS、CloudWatch Log
 ## Troubleshooting
 
 - `Forbidden` / `Unauthorized`: この演習内でIAMやKubernetesの権限を変更せず、管理者へ確認します。
-- Nodeが`Ready`にならない: CloudFormation events、Node group status、public subnet route、public IPv4、API CIDRを確認します。
+- Nodeが`Ready`にならない: CloudFormationイベント、Node groupの状態、public subnetの経路、public IPv4、API CIDRを確認します。
 - `ImagePullBackOff`: public ECRへの接続とimage名を確認します。別imageへ置き換えません。
-- Pendingにならない: Pod request、Node allocatable、eventを保存し、manifestが変更されていないか確認します。
+- Pendingにならない: Podの要求量、Nodeの割り当て可能量、イベントを保存し、manifestが変更されていないか確認します。
 - CrashLoopBackOffが見えない: 10分経過後はSection 5のPodを削除し、もう一度作成します。停止時間を削除して無制限に実行しないでください。
 
 参考:
