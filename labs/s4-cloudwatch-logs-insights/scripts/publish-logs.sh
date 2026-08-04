@@ -76,4 +76,4 @@ jq -n \
     end_epoch: $end_epoch,
     max_range_seconds: 900
   }' >"$evidence/query-window.json"
-printf 'PutLogEvents accepted six events; exact readback and bounded query window were saved locally.\n'
+printf 'CloudWatch Logsへ6件を送り、読み戻した内容と検索時間を手元へ保存しました。\n'

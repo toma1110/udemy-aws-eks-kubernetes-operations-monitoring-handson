@@ -15,4 +15,4 @@ fi
 groups="$(aws_json logs describe-log-groups --region "$REGION" --log-group-name-prefix "$LOG_GROUP_NAME")"
 [[ "$(jq -r --arg exact "$LOG_GROUP_NAME" '[.logGroups[] | select(.logGroupName == $exact)] | length' <<<"$groups")" == "0" ]] ||
   die "The fixed log group already exists; do not adopt or update it."
-printf 'Section 4 preflight passed for exact Region, cluster context, and absent fixed resources.\n'
+printf 'Section 4の事前確認が完了しました。Region、接続先、固定名resourceの未使用を確認済みです。\n'

@@ -20,4 +20,4 @@ rows_file="$(mktemp)"
 trap 'rm -f -- "$rows_file"' EXIT
 kubectl logs "$pod_name" -n "$NAMESPACE" >"$rows_file"
 assert_workload_log_rows "$rows_file" "$pod_name"
-printf 'Real EKS Job completed; exact owned Pod %s emitted six namespace/Pod-validated JSON rows.\n' "$pod_name"
+printf 'EKS Jobが完了し、Pod %s のJSONログ6件を確認しました。\n' "$pod_name"

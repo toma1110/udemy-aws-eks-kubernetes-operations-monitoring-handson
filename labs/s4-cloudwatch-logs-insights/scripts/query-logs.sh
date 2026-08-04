@@ -82,5 +82,5 @@ run_bounded_query() {
 
 run_bounded_query "all-events" "$SCRIPT_DIR/../queries/all-events.logs-insights" 6
 run_bounded_query "errors" "$SCRIPT_DIR/../queries/errors.logs-insights" 2
-printf 'Bounded Logs Insights queries returned exact 6/2 rows for namespace %s and Pod %s.\n' \
+printf 'Logs InsightsでNamespace %s、Pod %s の全6件とERROR 2件を確認しました。\n' \
   "$NAMESPACE" "$pod_name"

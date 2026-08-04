@@ -6,6 +6,8 @@
 
 ## 目的
 
+障害調査でログを探すときは、検索画面を広く眺めるより、まず「どのPodの、いつのログか」を固定することが大切です。この演習では、Podで発生したログをCloudWatch Logsへ送り、同じPod名と短い時間帯を引き継いでLogs Insightsで絞り込みます。これにより、検索結果が0件でも「エラーがない」と決めつけず、検索条件と収集経路のどちらを確認するか判断できます。
+
 このハンズオンを終えると、次の流れを実行できます。
 
 1. EKSのsample Jobから6件のJSONログを取得する
@@ -142,7 +144,7 @@ preflightは、現在のdefault CloudShell STS identity、東京Region、EKS clu
 次の1行が表示されます。
 
 ```text
-Section 4 preflight passed for exact Region, cluster context, and absent fixed resources.
+Section 4の事前確認が完了しました。Region、接続先、固定名resourceの未使用を確認済みです。
 ```
 
 ### 4. EKSでsampleログを6件作る
@@ -164,7 +166,7 @@ scriptはNamespaceを作成し、cleanupに必要な限定RBACを設定してか
 次の形式の1行が表示されます。`<Pod名>`は実行ごとに変わります。
 
 ```text
-Real EKS Job completed; exact owned Pod <Pod名> emitted six namespace/Pod-validated JSON rows.
+EKS Jobが完了し、Pod <Pod名> のJSONログ6件を確認しました。
 ```
 
 ### 5. CloudWatch Logsへ送り、画面で探す（s4-l2）
@@ -195,7 +197,7 @@ scriptは送信が拒否されていないこと、CloudWatchから6件を読み
 terminalに次の1行が表示され、Consoleの`sample-workload`にも同じ6件が表示されます。
 
 ```text
-PutLogEvents accepted six events; exact readback and bounded query window were saved locally.
+CloudWatch Logsへ6件を送り、読み戻した内容と検索時間を手元へ保存しました。
 ```
 
 ### 6. Logs Insightsで6件とERROR 2件を探す（s4-l3）
@@ -224,8 +226,19 @@ queryのraw result、読みやすい形へ変換したresult、`recordsMatched`�
 terminalに次の形式の1行が表示されます。Logs Insightsの画面でも、全6件と`ERROR` 2件を確認できます。
 
 ```text
-Bounded Logs Insights queries returned exact 6/2 rows for namespace udemy4-s4-logs and Pod <Pod名>.
+Logs InsightsでNamespace udemy4-s4-logs、Pod <Pod名> の全6件とERROR 2件を確認しました。
 ```
+
+### 検索結果が0件だった場合
+
+0件は「エラーがない」という意味ではありません。この演習ではAgentを経由せず、`publish-logs.sh`がCloudWatch Logs APIを使ってPodログを直接送信します。次の順序で確認してください。
+
+1. `publish-logs.sh`が成功表示まで完了したか確認する。途中で停止した場合は最初のerrorを確認し、log group／log streamの作成、ログ送信、読み戻しに必要なAPI権限と応答を見直す
+2. `kubectl logs`で対象Podに6件のログがあるか確認する
+3. 送信と読み戻しが成功している場合は、東京Region、`/udemy4/c010/s4/20260725`、`sample-workload`、保存された検索時間を選んでいるか確認する
+4. CloudWatch Logsには6件あるのにLogs Insightsで0件の場合は、選択したlog group、時間帯、queryのNamespaceとPod名を確認する
+
+本番環境でFluent BitなどのAgentを使って収集している場合は、上記とは別にAgent Pod、収集設定、送信権限を確認します。設定変更、Agent再起動、権限追加は、観察結果だけで行わず環境の管理者へ引き継いでください。
 
 ## 期待結果
 
