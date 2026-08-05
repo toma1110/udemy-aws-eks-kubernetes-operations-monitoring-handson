@@ -20,7 +20,7 @@
 
 ### 実環境コマンドと固定データの対応
 
-次の `kubectl` コマンドは参照用であり、この演習では**実行しません**。クラスタ接続とcredentialを前提にせず、右欄の固定データを `Get-Content` で読むことで同じ確認順序を練習します。
+次の `kubectl` コマンドは参照用であり、この演習では**実行しません**。クラスタへの接続や認証情報を前提にせず、右欄の固定データを `Get-Content` で読むことで同じ確認順序を練習します。
 
 | 実環境で対応するコマンド（未実行） | この演習で読む固定データ |
 | --- | --- |
@@ -35,7 +35,7 @@
 | `kubectl logs oom-reporter -n training --previous` | `fixtures/logs-oom-reporter-previous.txt` |
 | `kubectl get events -n training --sort-by=.lastTimestamp` | `fixtures/events.json` |
 
-実環境で試す場合は、別途正しいcluster context、対象namespace、参照権限が必要です。この教材の完了条件には含めず、AWSアカウント、クラスタ、credentialは用意しないでください。
+実環境で試す場合は、別途正しいcluster context、対象namespace、参照権限が必要です。この教材の完了条件には含めず、AWSアカウント、クラスタ、認証情報は用意しないでください。
 
 ## 手順
 
@@ -48,6 +48,8 @@
 
 2. Node の一覧を確認します。
 
+   目的: Node 全体の停止か、個別 Pod の問題かを最初に分けます。
+
    ```powershell
    Get-Content fixtures/get-nodes.json
    ```
@@ -56,6 +58,8 @@
 
 3. namespace と Pod の一覧を確認します。
 
+   目的: namespace で調査範囲を固定し、状態と再起動回数から詳しく見る Pod を選びます。
+
    ```powershell
    Get-Content fixtures/get-namespaces.json
    Get-Content fixtures/get-pods.json
@@ -63,7 +67,9 @@
 
    期待結果: `training` namespace に `pending-api`、`crashloop-worker`、`oom-reporter` という3つの異常候補が見つかります。`healthy-web` は `Running`、再起動0回です。
 
-4. Pending の情報を同じ対象で照合します。
+4. Pending の配置理由を event で確認します。
+
+   目的: 配置待ちの Pod と、その Pod を指す event（クラスタ内で起きた出来事の記録）を結び、配置できない理由の候補を探します。
 
    ```powershell
    Get-Content fixtures/describe-pending-api.json
@@ -73,6 +79,8 @@
    期待結果: `pending-api` は未配置で、同じ Pod の `FailedScheduling` event に `Insufficient memory` が記録されています。初動仮説は「要求メモリに対して配置可能な Node 容量が不足」です。
 
 5. CrashLoopBackOff の情報を照合します。
+
+   目的: 再起動を繰り返す Pod について、現在ログだけでなく直前の実行ログと event を確認し、起動直後に終了する理由の候補を探します。
 
    ```powershell
    Get-Content fixtures/describe-crashloop-worker.json
@@ -85,6 +93,8 @@
 
 6. OOMKilled の情報を照合します。
 
+   目的: 現在は `Running` でも過去にメモリ上限で終了していないかを、再起動回数、直前の終了理由、直前ログから確認します。
+
    ```powershell
    Get-Content fixtures/describe-oom-reporter.json
    Get-Content fixtures/logs-oom-reporter-previous.txt
@@ -94,6 +104,8 @@
 
 7. すべての固定データを検証し、診断結果を作ります。
 
+   目的: 手作業で選んだ対象と根拠が、固定済みの正解例と矛盾しないかを一括確認します。このコマンドはファイルを作成・変更しません。
+
    ```powershell
    python analyze.py --check
    ```
@@ -101,6 +113,8 @@
    期待結果: `PASS: fixtures and analysis match expected-results.json` と表示され、終了コードは0です。
 
 8. テストを実行します。
+
+   目的: 別 namespace の情報や別 Pod の event を誤って結び付けると検出できることを確認します。このコマンドもクラウドへ接続せず、教材ファイルを変更しません。
 
    ```powershell
    python -m unittest discover -s tests -v
@@ -128,7 +142,7 @@
 
 ## クリーンアップ
 
-クラウドリソースは作成されないため、クラウド側の削除は不要です。ローカルの出力をファイルへ保存した場合だけ、その不要な出力ファイルを通常のファイル操作で削除してください。`fixtures/`、`expected-results.json`、`analyze.py` は演習の入力なので削除しません。
+クラウドリソースは作成されないため、クラウド側の削除は不要です。この README のコマンドはローカルファイルも作成・変更しないため、通常は終了操作も不要です。自分で出力先を指定して診断結果を保存した場合だけ、その正確な保存先を確認して不要な出力を削除してください。`fixtures/`、`expected-results.json`、`analyze.py` は演習の入力なので削除しません。最後に `git status --short` を実行し、意図しない教材ファイルの変更が表示されないことを確認します。
 
 ## ファイル
 

@@ -13,6 +13,8 @@
 
 ## 1. CloudShellを確認する
 
+ここでは、`aws --version`と`kubectl version --client`で必要な道具を確認し、`aws sts get-caller-identity`で操作先の利用者を確認します。`echo`と`df`はCloudShellの保存先と空き容量、`export`は以降のAWS CLIを東京リージョンへ固定するために使います。
+
 ```bash
 aws --version
 kubectl version --client
@@ -29,6 +31,8 @@ export AWS_DEFAULT_REGION=ap-northeast-1
 
 教材の先頭ディレクトリで実行します。
 
+`status.sh`の目的は、作成処理の前に接続先、共通EKS、Nodeの状態をread-onlyで確認することです。
+
 ```bash
 bash labs/common-eks/scripts/status.sh
 ```
@@ -36,6 +40,8 @@ bash labs/common-eks/scripts/status.sh
 成功しない場合は先へ進みません。[共通EKS基盤README](../common-eks/README.md)の作成手順またはトラブルシュートを確認してください。
 
 ## 3. Section 2のアプリを作成する
+
+`apply-workload.sh`の目的は、このSection専用Namespaceへ、観察対象となるDeploymentとClusterIP Serviceだけを作成することです。既存の同名Namespaceは更新も流用もしません。
 
 ```bash
 bash labs/s2-kubernetes-baseline/scripts/apply-workload.sh
@@ -52,6 +58,8 @@ bash labs/s2-kubernetes-baseline/scripts/apply-workload.sh
 
 ## 4. `get`で全体を見る（`s2-l3`）
 
+目的は、広い一覧からSection専用workloadまで順に範囲を狭めることです。最初の3コマンドでNode、Namespace、全Podの影響範囲を確認し、最後のコマンドでSectionのLabelが付いたDeployment、Service、Podだけへ絞ります。
+
 ```bash
 kubectl get nodes -o wide
 kubectl get namespaces
@@ -63,6 +71,8 @@ kubectl get deployment,service,pods -n udemy4-c010-s2-baseline \
 Cluster、Node、Namespace、Pod、Containerの順に所属を確認します。DeploymentがPodを維持し、Serviceがラベルで対象Podを選んでいることも確認します。
 
 ## 5. `describe`、`logs`、eventsで詳しく見る（`s2-l4`）
+
+最初の2行はLabelから対象Pod名を1件取得できたことを確認します。`describe`は状態理由とContainerの履歴、`logs`はアプリの出力、eventsは周辺で起きた出来事、`endpoints`はServiceがどのPodへ接続するかを確認するために使います。
 
 ```bash
 POD_NAME="$(kubectl get pod -n udemy4-c010-s2-baseline \
@@ -83,6 +93,8 @@ kubectl get endpoints baseline-web -n udemy4-c010-s2-baseline -o wide
 
 ## 6. 確認結果を保存する
 
+`EVIDENCE_DIR`は今回の観察結果だけを保存する新しいディレクトリを指定します。`verify-and-capture.sh`の目的は、Pod、Deployment、Serviceの対応と期待ログを確認し、cleanup前の観察結果をそのディレクトリへ保存することです。
+
 ```bash
 export EVIDENCE_DIR="$HOME/udemy-eks-evidence/s2-$(date -u +%Y%m%dT%H%M%SZ)"
 bash labs/s2-kubernetes-baseline/scripts/verify-and-capture.sh
@@ -94,6 +106,8 @@ bash labs/s2-kubernetes-baseline/scripts/verify-and-capture.sh
 
 共通EKSを削除する前に必ず実行します。
 
+`cleanup-section.sh`の目的は、この教材のLabelを持つ正確なSection 2 Namespaceだけを削除し、同名Namespaceが残っていないことまで確認することです。接続先またはNamespaceの確認に失敗した場合は削除せず、原因を確認します。
+
 ```bash
 bash labs/s2-kubernetes-baseline/scripts/cleanup-section.sh
 ```
@@ -103,6 +117,8 @@ Namespaceがないことを正常に確認できた場合だけ成功です。�
 ## 8. 共通EKSを削除して残存を確認する
 
 Section 2の削除に成功した後で実行します。
+
+`delete-common-after-s2.sh`の目的は、Section 2 Namespaceの不存在を再確認したうえで、共通EKSの削除と残存確認を続けることです。ほかの用途で共通EKSを使っている場合は、この手順を実行しません。
 
 ```bash
 bash labs/s2-kubernetes-baseline/scripts/delete-common-after-s2.sh
@@ -120,4 +136,4 @@ bash labs/s2-kubernetes-baseline/scripts/delete-common-after-s2.sh
 
 ## バージョンと料金
 
-AWS CLIは`2.12.3`以上、`kubectl`はクラスターと同じ、または前後1 minor以内を使います。アプリのimageは`public.ecr.aws/docker/library/busybox:1.36.1`です。料金は[共通EKS基盤README](../common-eks/README.md#料金の注意)のAWS公式リンクから実行直前に確認してください。
+AWS CLIは`2.12.3`以上、`kubectl`はクラスターと同じ、または前後1 minor以内を使います。アプリのimageは`public.ecr.aws/docker/library/busybox:1.36.1`です。料金は[共通EKS基盤README](../common-eks/README.md#cost-warning)のAWS公式リンクから実行直前に確認してください。
