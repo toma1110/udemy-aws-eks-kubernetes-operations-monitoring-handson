@@ -1,0 +1,16 @@
+{
+  "schema": "s3-public-package-inventory-v1",
+  "files": {
+    "baseline-record.md": "6161f38a7046b8ccdaadd8752bc436daf61bc1f3c481e92be8e8936aac062ed6",
+    "README.md": "8b89dbb5fe348012ad7416b0036b89efcca6e2c8d7799c8f210276345bc674a2",
+    "render_validate.py": "46e7010c8ddb5a6403c7c1b5966e26e9468ce47ee8b18106a5cc35d467355e76",
+    "templates/application.yaml": "5716b2b050fca3595e71587d2114a2d326ef46bc064ad920c7d94f32040af486",
+    "templates/cluster.yaml": "fce32e3516bca6f481c699fb0304fa332c824ab27d5b15934bc163e25e9c7ce7",
+    "templates/irsa-check.yaml": "55c0501937ec04ac0c90400e7e85ab9016bad6de53b2863888d3ca1fa41e8cb9",
+    "templates/irsa-policy.json": "ca2623a842ffead25903a44a5240694973858051c6ce174e0b2e6c478012844a",
+    "templates/logging.yaml": "62d8944993023240925daba15d45da5baff958693b55b195f5aef6375ffe8d27",
+    "templates/pod-execution-logging-policy.json": "46ed2e70b1f6680d725feac6f64905b46a9662a413231f0431a0eb8ed892e485",
+    "templates/rbac.yaml": "8d040a0df9f08f756f369792bf458cb3a027e4098eb9dd49aa40df06aa8bf524",
+    "tests/test_package.py": "7db036953e698a9b01f079644ecb4f6315b3c4e67d907b5cf1495f6e90c04cf3"
+  }
+}

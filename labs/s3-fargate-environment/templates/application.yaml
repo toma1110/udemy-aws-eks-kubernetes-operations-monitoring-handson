@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eks-fargate-ops
+  labels:
+    course: c010
+    section: s3
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: baseline-config
+  namespace: eks-fargate-ops
+data:
+  APP_MODE: baseline
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: baseline-secret
+  namespace: eks-fargate-ops
+type: Opaque
+stringData:
+  DEMO_VALUE: non-sensitive-training-value
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: baseline-app
+  namespace: eks-fargate-ops
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: baseline-app
+  namespace: eks-fargate-ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: baseline-app
+  template:
+    metadata:
+      labels:
+        app: baseline-app
+        compute: ops-lab
+    spec:
+      serviceAccountName: baseline-app
+      containers:
+        - name: app
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023.8.20250721.2
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              touch /tmp/healthy
+              while true; do
+                printf 'level=INFO app=baseline-app config=%s secret_ref=loaded\n' "$APP_MODE"
+                sleep 10
+              done
+          env:
+            - name: APP_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: baseline-config
+                  key: APP_MODE
+            - name: DEMO_VALUE
+              valueFrom:
+                secretKeyRef:
+                  name: baseline-secret
+                  key: DEMO_VALUE
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/healthy"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/healthy"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

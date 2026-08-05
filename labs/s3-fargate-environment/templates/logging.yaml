@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aws-observability
+  labels:
+    aws-observability: enabled
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-logging
+  namespace: aws-observability
+data:
+  output.conf: |
+    [OUTPUT]
+        Name cloudwatch_logs
+        Match   kube.*
+        region ap-northeast-1
+        log_group_name /aws/eks/eks-fargate-ops-lab/containers
+        log_stream_prefix from-fluent-bit-
+        auto_create_group false

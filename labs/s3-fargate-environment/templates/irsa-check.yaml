@@ -1,0 +1,29 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: irsa-describe-cluster
+  namespace: eks-fargate-ops
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: irsa-describe-cluster
+        compute: ops-lab
+    spec:
+      restartPolicy: Never
+      serviceAccountName: irsa-reader
+      containers:
+        - name: aws-cli
+          image: public.ecr.aws/aws-cli/aws-cli:2.27.49
+          args:
+            - eks
+            - describe-cluster
+            - --region
+            - ap-northeast-1
+            - --name
+            - eks-fargate-ops-lab
+            - --query
+            - cluster.status
+            - --output
+            - text
