@@ -1,0 +1,16 @@
+{
+  "schema": "s10-cleanup-package-inventory-v2",
+  "files": {
+    "capture_target_record.py": "3b52c707011cb79808f81523e622975018bf8f42da7c475e1c63a74bd5ef18ed",
+    "capture-target-record.sh": "aa98f7ec9fe93eb3998b956dc424e0466fb74f9c9fec1d64e027148161c1b6b7",
+    "cleanup-record.md": "b5a9e86928d8f33af12356e338aac03f015adae235305022854fd5be1e4b8fdd",
+    "cleanup.sh": "c1722a7a911399877ad454fd84014ba9878be3226d550d1fef70892d4d241e6d",
+    "execute_preflight.py": "60fdce054acc6e2494aeb3a2f6384b5440d25ff78d05c3c5983550ba559fff3f",
+    "README.md": "6199674fee9206e4d985d1d42e329f587ced479ffb7b722beb13a3f7e13a9091",
+    "runtime_contract.py": "81facdea66b4e0135363def6296ffeba92e4712699d503acd3fc31fee22859b6",
+    "tests/test_package.py": "fb226d075112a5a49cb677ccc0ade4fba6a1dedf29726795a8fc0e81f33e9e26",
+    "tests/test_runtime_contract.py": "e95e388d9d35338911c2c18c6da3f657188230a59886b9422b918d790fce94cb",
+    "validate_package.py": "33fb7b9609626d97f09c360d904077899097e20d21ba431285371eafc6ee9a3a",
+    "verify-residuals.sh": "3556134d686cfdb56d0c40b8dc391192ff51a91bce38d50169623e0a79a3584b"
+  }
+}

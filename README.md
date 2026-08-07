@@ -18,7 +18,8 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 7. Section 6は、[ServiceAccount・RBAC・IAMの関係を観察する](labs/s6-permissions-first-response/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り、権限を追加せずにKubernetesとAWSの判定層を分けて確認します。
 8. Section 7は、[メトリクスやログが見えないときの初動切り分け](labs/s7-observability-first-response/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り専用で観察し、add-on、Agent、設定、IAM、network、Region、時間範囲を分けて確認します。
 9. Section 8は、[初動対応Runbookとコスト・削除確認](labs/s8-operations-runbook/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り専用で観察し、Runbook、料金発生源、所有権、cleanup順序を確認します。
-10. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
+10. Section 10の`s10-l1-cleanup`は、[演習resourceを完全削除して残存を確認する](labs/s10-cleanup/README.md)を入口にします。Section 3のcanonical固定名とownershipをfail closedで照合し、依存関係の逆順で削除した後、EKS、Fargate、IAM、CloudWatch Logs、CloudFormation、VPC/NATをservice別にread-only確認します。
+11. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
 
 ## 演習一覧
 
@@ -32,6 +33,7 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 | s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限の関係を読み取り専用で確認する | [labs/s6-permissions-first-response/README.md](labs/s6-permissions-first-response/README.md) |
 | s7-l2 / s7-l3 | メトリクスやログが見えないときを切り分ける | [labs/s7-observability-first-response/README.md](labs/s7-observability-first-response/README.md) |
 | s8-l3 / s8-l4 | 初動対応Runbookを作り、コストと安全な削除順序を確認する | [labs/s8-operations-runbook/README.md](labs/s8-operations-runbook/README.md) |
+| s10-l1-cleanup | Section 3の専用Fargate演習環境を完全削除し、service別に残存を確認する | [labs/s10-cleanup/README.md](labs/s10-cleanup/README.md) |
 
 ## AWS利用時の注意
 
@@ -47,6 +49,8 @@ EKS、EC2、NAT Gateway、CloudWatch Logs、Container Insights、Load Balancer�
 `labs/common-eks/scripts/create.sh`、Section 4の`apply-workload.sh` / `publish-logs.sh` / `cleanup-section.sh`、Section 5のscenario/cleanup scriptは、明示された固定名の学習用リソースを作成・削除します。Section 4ではnamespace、Job、CloudWatch Logs log group、log streamが対象です。ほかの既存クラスター向け確認scriptとfixture routeは読み取り専用です。固定stackまたは固定Section resourceが既に存在する場合は更新や引き継ぎをせず停止します。
 
 Section 3はcanonical固定名の専用EKS on Fargate環境、NAT Gateway、CloudWatch Logs、IAM role/policyなどを作成します。同名resourceが1件でも存在する場合は、名前変更、再利用、更新、削除をせず停止します。作成開始から90分以内に完了しない場合や途中で中断する場合は、Courseの`s10-l1-cleanup`へ直行します。
+
+Section 10のcleanupは、STS account、東京Region、exact cluster ARN、ownership tag、Kubernetes context、namespace label、Fargate Profileを照合できた場合だけ削除へ進みます。共有resource、別名resource、別Profile、他roleに接続中のIAM policy、参照中のOIDC providerは削除しません。AWS／Kubernetesの削除commandは受講者自身の専用非本番環境だけで実行してください。
 
 Section 5のlive routeは、AWS Management Consoleで東京`ap-northeast-1`を選んで起動するAWS CloudShellのBash、AWS CLI `2.12.3`以上、cluster versionと同じか前後1 minor以内の`kubectl`、`jq`、Python 3、事前認証済みconsole identityを前提にします。local PowerShellは不要です。Pod imageは`busybox:1.36.1`と`python:3.12-alpine`へtag固定されています。EKS control plane versionはtemplateで固定せず、実行時に利用可能な標準サポート版が選ばれるため、作成直前にAWS公式情報と`kubectl`互換性を再確認してください。
 
