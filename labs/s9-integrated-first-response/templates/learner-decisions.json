@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "answers": [
+    {
+      "id": "pending-profile-selector",
+      "diagnosis": "",
+      "correction": "",
+      "normalization_fields": [],
+      "escalation": ""
+    },
+    {
+      "id": "crashloop-application-config",
+      "diagnosis": "",
+      "correction": "",
+      "normalization_fields": [],
+      "escalation": ""
+    },
+    {
+      "id": "access-denied-irsa",
+      "diagnosis": "",
+      "correction": "",
+      "normalization_fields": [],
+      "escalation": ""
+    },
+    {
+      "id": "forbidden-rbac",
+      "diagnosis": "",
+      "correction": "",
+      "normalization_fields": [],
+      "escalation": ""
+    },
+    {
+      "id": "cloudwatch-application-error",
+      "diagnosis": "",
+      "correction": "",
+      "normalization_fields": [],
+      "escalation": ""
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "scenario_order": [
+    "pending-profile-selector",
+    "crashloop-application-config",
+    "access-denied-irsa",
+    "forbidden-rbac",
+    "cloudwatch-application-error"
+  ],
+  "diagnoses": {
+    "pending-profile-selector": "fargate-profile-selector-mismatch",
+    "crashloop-application-config": "application-config-mismatch",
+    "access-denied-irsa": "irsa-service-account-annotation-mismatch",
+    "forbidden-rbac": "rbac-rolebinding-subject-mismatch",
+    "cloudwatch-application-error": "application-endpoint-config-mismatch"
+  },
+  "restoration_required_fields": {
+    "pending-profile-selector": ["pod_compute_label", "pod_phase", "ready"],
+    "crashloop-application-config": ["app_mode", "ready", "restart_increasing", "expected_log"],
+    "access-denied-irsa": ["service_account_annotation", "verification_service_account", "aws_read_result", "access_denied"],
+    "forbidden-rbac": ["binding_subject", "can_i_get_configmaps", "can_i_delete_configmaps"],
+    "cloudwatch-application-error": ["application_endpoint", "ready", "request_result", "new_same_error_count"]
+  },
+  "corrections": {
+    "pending-profile-selector": "restore-compute-label",
+    "crashloop-application-config": "restore-app-mode",
+    "access-denied-irsa": "restore-irsa-annotation",
+    "forbidden-rbac": "restore-rolebinding-subject",
+    "cloudwatch-application-error": "restore-application-endpoint"
+  },
+  "escalations": {
+    "pending-profile-selector": "escalate-profile-or-shared-change",
+    "crashloop-application-config": "escalate-unknown-or-shared-config",
+    "access-denied-irsa": "escalate-iam-or-shared-identity-change",
+    "forbidden-rbac": "escalate-cluster-scope-or-auth-change",
+    "cloudwatch-application-error": "escalate-shared-endpoint-or-log-path-change"
+  },
+  "scenario_count": 5,
+  "restoration_complete": true
+}

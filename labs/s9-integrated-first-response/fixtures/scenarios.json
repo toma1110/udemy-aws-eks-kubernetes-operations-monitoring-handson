@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "captured_from": "deterministic-training-data",
+  "live_execution": false,
+  "scenarios": [
+    {
+      "id": "pending-profile-selector",
+      "lecture_id": "s9-l1",
+      "observed_at_utc": "2026-08-08T00:01:00Z",
+      "known_difference_count": 1,
+      "evidence": {
+        "pod_phase": "Pending",
+        "namespace": "eks-fargate-ops",
+        "profile_namespace": "eks-fargate-ops",
+        "pod_compute_label": "training-mismatch",
+        "profile_compute_label": "ops-lab",
+        "event_reason": "FailedScheduling",
+        "event_message": "no nodes available to schedule pods",
+        "container_started": false
+      },
+      "safe_action": "専用Pod templateのcompute labelだけを開始前のops-labへ戻す",
+      "baseline": {
+        "pod_compute_label": "ops-lab",
+        "pod_phase": "Running",
+        "ready": "1/1"
+      },
+      "post_restoration": {
+        "pod_compute_label": "ops-lab",
+        "pod_phase": "Running",
+        "ready": "1/1"
+      },
+      "escalation_if": "Fargate Profile自体の置換、共有namespace、clusterまたはVPCの変更が必要"
+    },
+    {
+      "id": "crashloop-application-config",
+      "lecture_id": "s9-l1",
+      "observed_at_utc": "2026-08-08T00:05:00Z",
+      "known_difference_count": 1,
+      "evidence": {
+        "pod_phase": "Running",
+        "waiting_reason": "CrashLoopBackOff",
+        "last_reason": "Error",
+        "last_exit_code": 42,
+        "restart_count": 3,
+        "previous_log": "level=ERROR app=baseline-app APP_MODE=broken action=exit code=42",
+        "image_pulled": true,
+        "scheduled": true,
+        "probe_failed_before_exit": false
+      },
+      "safe_action": "専用ConfigMapのAPP_MODEだけを開始前のbaselineへ戻す",
+      "baseline": {
+        "app_mode": "baseline",
+        "ready": "1/1",
+        "restart_increasing": false,
+        "expected_log": "level=INFO app=baseline-app config=baseline secret_ref=loaded"
+      },
+      "post_restoration": {
+        "app_mode": "baseline",
+        "ready": "1/1",
+        "restart_increasing": false,
+        "expected_log": "level=INFO app=baseline-app config=baseline secret_ref=loaded"
+      },
+      "escalation_if": "開始前のConfigMap値が不明、共有ConfigMap、image、probeまたはmemory変更が必要"
+    },
+    {
+      "id": "access-denied-irsa",
+      "lecture_id": "s9-l2",
+      "observed_at_utc": "2026-08-08T00:10:00Z",
+      "known_difference_count": 1,
+      "evidence": {
+        "access_target": "AWS API",
+        "workload_service_account": "irsa-reader",
+        "aws_operation": "eks:DescribeCluster",
+        "aws_error_code": "AccessDenied",
+        "service_account_annotation_matches_baseline": false,
+        "trust_matches_baseline": true,
+        "policy_allows_expected_read": true,
+        "pod_execution_role_used_by_application": false
+      },
+      "safe_action": "専用ServiceAccount annotationだけをSection 3で記録したroleへ戻す",
+      "baseline": {
+        "service_account_annotation": "role/eks-fargate-ops-irsa-reader",
+        "verification_service_account": "irsa-reader",
+        "aws_read_result": "ACTIVE",
+        "access_denied": false
+      },
+      "post_restoration": {
+        "service_account_annotation": "role/eks-fargate-ops-irsa-reader",
+        "verification_service_account": "irsa-reader",
+        "aws_read_result": "ACTIVE",
+        "access_denied": false
+      },
+      "escalation_if": "IAM trust／policy、Pod Execution Role、共有ServiceAccountまたはcredentialの変更が必要"
+    },
+    {
+      "id": "forbidden-rbac",
+      "lecture_id": "s9-l2",
+      "observed_at_utc": "2026-08-08T00:15:00Z",
+      "known_difference_count": 1,
+      "evidence": {
+        "access_target": "Kubernetes API",
+        "authenticated": true,
+        "subject": "system:serviceaccount:eks-fargate-ops:rbac-reader",
+        "verb": "get",
+        "resource": "configmaps",
+        "api_error_code": "Forbidden",
+        "can_i_get_configmaps": "no",
+        "binding_subject": "training-mismatch",
+        "expected_binding_subject": "rbac-reader"
+      },
+      "safe_action": "専用RoleBindingのsubjectだけをrbac-readerへ戻す",
+      "baseline": {
+        "binding_subject": "rbac-reader",
+        "can_i_get_configmaps": "yes",
+        "can_i_delete_configmaps": "no"
+      },
+      "post_restoration": {
+        "binding_subject": "rbac-reader",
+        "can_i_get_configmaps": "yes",
+        "can_i_delete_configmaps": "no"
+      },
+      "escalation_if": "ClusterRole、ClusterRoleBinding、共有subject、cluster-adminまたは認証設定の変更が必要"
+    },
+    {
+      "id": "cloudwatch-application-error",
+      "lecture_id": "s9-l3",
+      "observed_at_utc": "2026-08-08T00:20:00Z",
+      "known_difference_count": 1,
+      "evidence": {
+        "pod_phase": "Running",
+        "namespace": "eks-fargate-ops",
+        "pod": "baseline-app-training",
+        "container": "app",
+        "container_request_id": "training-request-005",
+        "container_error_code": "UPSTREAM_CONFIG_INVALID",
+        "cloudwatch_namespace": "eks-fargate-ops",
+        "cloudwatch_pod": "baseline-app-training",
+        "cloudwatch_container": "app",
+        "cloudwatch_request_id": "training-request-005",
+        "cloudwatch_error_code": "UPSTREAM_CONFIG_INVALID",
+        "query_window_minutes": 15,
+        "application_endpoint": "endpoint/broken-training"
+      },
+      "safe_action": "専用application設定のendpointだけを開始前の値へ戻す",
+      "baseline": {
+        "application_endpoint": "endpoint/healthy-training",
+        "ready": "1/1",
+        "request_result": "ok",
+        "new_same_error_count": 0
+      },
+      "post_restoration": {
+        "application_endpoint": "endpoint/healthy-training",
+        "ready": "1/1",
+        "request_result": "ok",
+        "new_same_error_count": 0
+      },
+      "escalation_if": "共有endpoint、network、log router、Pod Execution Role、Regionまたはlog groupの変更が必要"
+    }
+  ]
+}

@@ -18,8 +18,9 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 7. Section 6は、[ServiceAccount・RBAC・IAMの関係を観察する](labs/s6-permissions-first-response/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り、権限を追加せずにKubernetesとAWSの判定層を分けて確認します。
 8. Section 7は、[メトリクスやログが見えないときの初動切り分け](labs/s7-observability-first-response/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り専用で観察し、add-on、Agent、設定、IAM、network、Region、時間範囲を分けて確認します。
 9. Section 8は、[初動対応Runbookとコスト・削除確認](labs/s8-operations-runbook/README.md)を入口にします。東京RegionのAWS CloudShell Bashから共通EKS基盤を読み取り専用で観察し、Runbook、料金発生源、所有権、cleanup順序を確認します。
-10. Section 10の`s10-l1-cleanup`は、[演習resourceを完全削除して残存を確認する](labs/s10-cleanup/README.md)を入口にします。Section 3のcanonical固定名とownershipをfail closedで照合し、依存関係の逆順で削除した後、EKS、Fargate、IAM、CloudWatch Logs、CloudFormation、VPC/NATをservice別にread-only確認します。
-11. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
+10. Section 9は、[5つの症状を一つの初動手順で解く](labs/s9-integrated-first-response/README.md)を入口にします。AWSへ接続しない固定データで、Pending、CrashLoopBackOff、AccessDenied、Forbidden、CloudWatch application errorを証拠の順に調べ、開始前の正常値への復旧と引き継ぎ判断をまとめます。
+11. Section 10の`s10-l1-cleanup`は、[演習resourceを完全削除して残存を確認する](labs/s10-cleanup/README.md)を入口にします。Section 3のcanonical固定名とownershipをfail closedで照合し、依存関係の逆順で削除した後、EKS、Fargate、IAM、CloudWatch Logs、CloudFormation、VPC/NATをservice別にread-only確認します。
+12. 許可された既存EKSクラスターを読むだけの場合は、[読み取り専用の状態確認](scripts/collect_readonly_evidence.ps1)を利用できます。既存リソースを教材の削除対象にしません。
 
 ## 演習一覧
 
@@ -33,6 +34,7 @@ cd udemy-aws-eks-kubernetes-operations-monitoring-handson
 | s6-l4 / s6-l5 | ServiceAccount、RBAC、AWS権限の関係を読み取り専用で確認する | [labs/s6-permissions-first-response/README.md](labs/s6-permissions-first-response/README.md) |
 | s7-l2 / s7-l3 | メトリクスやログが見えないときを切り分ける | [labs/s7-observability-first-response/README.md](labs/s7-observability-first-response/README.md) |
 | s8-l3 / s8-l4 | 初動対応Runbookを作り、コストと安全な削除順序を確認する | [labs/s8-operations-runbook/README.md](labs/s8-operations-runbook/README.md) |
+| s9-l1〜s9-l5 | 5つの症状を同じ初動順序で調べ、復旧と引き継ぎまで記録する | [labs/s9-integrated-first-response/README.md](labs/s9-integrated-first-response/README.md) |
 | s10-l1-cleanup | Section 3の専用Fargate演習環境を完全削除し、service別に残存を確認する | [labs/s10-cleanup/README.md](labs/s10-cleanup/README.md) |
 
 ## AWS利用時の注意

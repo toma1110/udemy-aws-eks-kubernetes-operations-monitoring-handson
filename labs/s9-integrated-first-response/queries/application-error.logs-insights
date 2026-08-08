@@ -1,0 +1,7 @@
+fields @timestamp, kubernetes.namespace_name, kubernetes.pod_name, kubernetes.container_name, message, request_id, error_code
+| filter kubernetes.namespace_name = "eks-fargate-ops"
+| filter kubernetes.pod_name like /^baseline-app-/
+| filter kubernetes.container_name = "app"
+| filter request_id = "training-request-005" and error_code = "UPSTREAM_CONFIG_INVALID"
+| sort @timestamp asc
+| limit 20
